@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">pcKeyboard</string>
+    <string name="subtype_en_us">English (US)</string>
+
+    <string name="setup_subtitle">A full PC-style keyboard with Ctrl, Alt and a function row — built for foldables and phones.</string>
+    <string name="setup_step_enable">1. Enable pcKeyboard</string>
+    <string name="setup_step_select">2. Select pcKeyboard as your input method</string>
+    <string name="setup_btn_enable">Open system input settings</string>
+    <string name="setup_btn_select">Switch keyboard</string>
+    <string name="setup_btn_settings">Open keyboard settings</string>
+    <string name="setup_status_enabled_yes">Status: enabled</string>
+    <string name="setup_status_enabled_no">Status: not enabled yet</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_new_theme">New theme</string>
+
+    <string name="theme_editor_title">Theme editor</string>
+    <string name="theme_editor_name">Theme name</string>
+    <string name="theme_editor_preview">Live preview</string>
+    <string name="theme_editor_colors">Colors (hex)</string>
+    <string name="theme_editor_color_background">Background</string>
+    <string name="theme_editor_color_key">Letter key</string>
+    <string name="theme_editor_color_key_pressed">Pressed</string>
+    <string name="theme_editor_color_text">Text</string>
+    <string name="theme_editor_color_secondary_text">Secondary text</string>
+    <string name="theme_editor_color_modifier">Modifier key</string>
+    <string name="theme_editor_color_modifier_text">Modifier text</string>
+    <string name="theme_editor_color_accent">Accent (space/enter)</string>
+    <string name="theme_editor_color_accent_text">Accent text</string>
+    <string name="theme_editor_radius">Corner radius</string>
+    <string name="theme_editor_spacing">Key spacing</string>
+    <string name="theme_editor_save">Save</string>
+</resources>

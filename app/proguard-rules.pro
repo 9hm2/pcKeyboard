@@ -1,0 +1,2 @@
+-keep class com.pckeyboard.ime.** { *; }
+-keepclassmembers class * extends android.inputmethodservice.InputMethodService { *; }
