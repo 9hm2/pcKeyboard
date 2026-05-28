@@ -308,7 +308,10 @@ class KeyboardView @JvmOverloads constructor(
         trackpadArmed = false
         trackpadDxAccum = 0f
         trackpadDyAccum = 0f
-        rowsContainer.visibility = INVISIBLE
+        // Don't toggle rowsContainer visibility: the trackpad's opaque draw
+        // covers the rows by itself, and toggling visibility can trigger
+        // ACTION_CANCEL on the still-active space-press gesture, which would
+        // immediately tear the trackpad back down.
         addView(tp, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
@@ -336,25 +339,24 @@ class KeyboardView @JvmOverloads constructor(
         trackpadLastX = rawX
         trackpadLastY = rawY
 
+        var dxSteps = 0
+        var dySteps = 0
         while (abs(trackpadDxAccum) >= stepPx) {
-            if (trackpadDxAccum > 0) {
-                sendCursor(KeyType.ARROW_RIGHT); trackpadDxAccum -= stepPx
-            } else {
-                sendCursor(KeyType.ARROW_LEFT);  trackpadDxAccum += stepPx
-            }
+            if (trackpadDxAccum > 0) { dxSteps++; trackpadDxAccum -= stepPx }
+            else { dxSteps--; trackpadDxAccum += stepPx }
         }
         while (abs(trackpadDyAccum) >= stepPx) {
-            if (trackpadDyAccum > 0) {
-                sendCursor(KeyType.ARROW_DOWN); trackpadDyAccum -= stepPx
-            } else {
-                sendCursor(KeyType.ARROW_UP);   trackpadDyAccum += stepPx
-            }
+            if (trackpadDyAccum > 0) { dySteps++; trackpadDyAccum -= stepPx }
+            else { dySteps--; trackpadDyAccum += stepPx }
         }
-    }
-
-    private fun sendCursor(direction: KeyType) {
-        val key = Key(code = 0, label = "", type = direction)
-        listener?.onKey(key, modifiers)
+        // Route cursor motion through a dedicated callback so the service
+        // can move the cursor with InputConnection.setSelection instead of
+        // sending DPAD KeyEvents — DPADs can move focus to a sibling view
+        // (e.g. the Send button next to a chat input), which fires
+        // onFinishInput and looks to the user like the keyboard vanishing.
+        if (dxSteps != 0 || dySteps != 0) {
+            listener?.onCursorMove(dxSteps, dySteps)
+        }
     }
 
     private fun endTrackpad() {
@@ -362,7 +364,6 @@ class KeyboardView @JvmOverloads constructor(
         trackpadView = null
         trackpadActive = false
         trackpadArmed = false
-        rowsContainer.visibility = VISIBLE
     }
 
     override fun onDetachedFromWindow() {
@@ -419,5 +420,7 @@ class KeyboardView @JvmOverloads constructor(
 
     interface Listener {
         fun onKey(key: Key, modifiers: ModifierState)
+        /** Trackpad-driven cursor motion. dx / dy are character / line steps. */
+        fun onCursorMove(dx: Int, dy: Int)
     }
 }

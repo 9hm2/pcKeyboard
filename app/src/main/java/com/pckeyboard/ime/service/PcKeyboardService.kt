@@ -5,6 +5,7 @@ import android.inputmethodservice.InputMethodService
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedTextRequest
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
 import com.pckeyboard.ime.model.Key
@@ -134,6 +135,53 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private fun switchSymbolsShift() {
         currentMode = if (currentMode == LayoutMode.SYMBOLS) LayoutMode.SYMBOLS_SHIFT else LayoutMode.SYMBOLS
         bindCurrentLayout()
+    }
+
+    /**
+     * Trackpad cursor motion. Uses [InputConnection.setSelection] so we
+     * never inject DPAD KeyEvents — those can move focus to a non-editable
+     * sibling view (e.g. a chat-app Send button) which then fires
+     * onFinishInput and tears down the IME, looking like the keyboard
+     * vanished mid-gesture.
+     */
+    override fun onCursorMove(dx: Int, dy: Int) {
+        val ic = currentInputConnection ?: return
+        val req = ExtractedTextRequest().apply {
+            hintMaxChars = 4096
+            hintMaxLines = 256
+        }
+        val ext = ic.getExtractedText(req, 0) ?: return
+        val text = ext.text?.toString() ?: return
+        val origin = ext.selectionStart
+        if (origin < 0) return
+
+        var newPos = (origin + dx).coerceIn(0, text.length)
+
+        if (dy != 0 && text.isNotEmpty()) {
+            val currentLineStart =
+                text.lastIndexOf('\n', (newPos - 1).coerceAtLeast(0)) + 1
+            val column = newPos - currentLineStart
+
+            var lineStart = currentLineStart
+            if (dy > 0) {
+                for (i in 0 until dy) {
+                    val nl = text.indexOf('\n', lineStart)
+                    if (nl == -1) { lineStart = text.length; break }
+                    lineStart = nl + 1
+                }
+            } else {
+                for (i in 0 until -dy) {
+                    if (lineStart == 0) break
+                    val prev = text.lastIndexOf('\n', lineStart - 2)
+                    lineStart = if (prev == -1) 0 else prev + 1
+                }
+            }
+            val nextNl = text.indexOf('\n', lineStart)
+            val lineLen = if (nextNl == -1) text.length - lineStart else nextNl - lineStart
+            newPos = lineStart + column.coerceAtMost(lineLen)
+        }
+
+        if (newPos != origin) ic.setSelection(newPos, newPos)
     }
 
     private fun androidKeyCodeForChar(c: Char): Int {
