@@ -142,26 +142,65 @@ class KeyView(
     private fun dp(v: Float): Float =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics)
 
+    private var popupActive: Boolean = false
+    private var longPressRunnable: Runnable? = null
+    private val longPressTimeoutMs: Long = 380L
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 isDown = true
                 listener?.onKeyDown(this)
+                if (key.popupChars != null) scheduleLongPress()
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (popupActive) {
+                    listener?.onKeyPopupMove(this, event.rawX, event.rawY)
+                }
                 return true
             }
             MotionEvent.ACTION_UP -> {
                 isDown = false
+                cancelLongPressTimer()
+                if (popupActive) {
+                    popupActive = false
+                    listener?.onKeyPopupRelease(this)
+                    return true
+                }
                 listener?.onKeyUp(this)
                 performClick()
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
                 isDown = false
-                listener?.onKeyCancel(this)
+                cancelLongPressTimer()
+                if (popupActive) {
+                    popupActive = false
+                    listener?.onKeyPopupCancel(this)
+                } else {
+                    listener?.onKeyCancel(this)
+                }
                 return true
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun scheduleLongPress() {
+        val r = Runnable {
+            if (isDown && key.popupChars != null) {
+                popupActive = true
+                listener?.onKeyLongPress(this)
+            }
+        }
+        longPressRunnable = r
+        postDelayed(r, longPressTimeoutMs)
+    }
+
+    private fun cancelLongPressTimer() {
+        longPressRunnable?.let { removeCallbacks(it) }
+        longPressRunnable = null
     }
 
     override fun performClick(): Boolean {
@@ -173,5 +212,9 @@ class KeyView(
         fun onKeyDown(view: KeyView)
         fun onKeyUp(view: KeyView)
         fun onKeyCancel(view: KeyView)
+        fun onKeyLongPress(view: KeyView)
+        fun onKeyPopupMove(view: KeyView, rawX: Float, rawY: Float)
+        fun onKeyPopupRelease(view: KeyView)
+        fun onKeyPopupCancel(view: KeyView)
     }
 }

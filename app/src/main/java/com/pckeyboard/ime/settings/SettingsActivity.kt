@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.SeekBar
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.pckeyboard.ime.databinding.ActivitySettingsBinding
@@ -23,6 +24,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var adapter: ThemeAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -30,6 +32,8 @@ class SettingsActivity : AppCompatActivity() {
         prefs = KeyboardPrefs(this)
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        binding.scrollView.addSystemBarBottomPadding()
+        binding.btnNewTheme.addSystemBarBottomEndMargin()
 
         adapter = ThemeAdapter(
             onSelect = {

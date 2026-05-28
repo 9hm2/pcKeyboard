@@ -4,9 +4,12 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.widget.SeekBar
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import com.pckeyboard.ime.databinding.ActivityThemeEditorBinding
 import com.pckeyboard.ime.layout.EnglishLayout
+import com.pckeyboard.ime.settings.addSystemBarBottomEndMargin
+import com.pckeyboard.ime.settings.addSystemBarBottomPadding
 import com.pckeyboard.ime.theme.KeyboardTheme
 import com.pckeyboard.ime.theme.ThemeRepository
 import com.pckeyboard.ime.theme.Themes
@@ -24,12 +27,15 @@ class ThemeEditorActivity : AppCompatActivity() {
     private var editingExistingId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         binding = ActivityThemeEditorBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         repo = ThemeRepository(this)
+        binding.scrollView.addSystemBarBottomPadding()
+        binding.btnSave.addSystemBarBottomEndMargin()
 
         val incomingId = intent.getStringExtra(EXTRA_THEME_ID)
         working = if (incomingId != null && repo.getThemeById(incomingId) != null) {

@@ -34,57 +34,67 @@ object EnglishLayout {
     )
 
     private fun numberRow(): List<Key> = listOf(
-        Key.char("`", "~"),
-        Key.char("1", "!"),
-        Key.char("2", "@"),
-        Key.char("3", "#"),
-        Key.char("4", "$"),
-        Key.char("5", "%"),
-        Key.char("6", "^"),
-        Key.char("7", "&"),
-        Key.char("8", "*"),
-        Key.char("9", "("),
-        Key.char("0", ")"),
-        Key.char("-", "_"),
-        Key.char("=", "+"),
+        Key.char("`", "~", popup = "~`"),
+        Key.char("1", "!", popup = "¹½¼"),
+        Key.char("2", "@", popup = "²"),
+        Key.char("3", "#", popup = "³¾"),
+        Key.char("4", "$", popup = "€£¥₹₽"),
+        Key.char("5", "%", popup = "‰"),
+        Key.char("6", "^", popup = "°"),
+        Key.char("7", "&", popup = "§"),
+        Key.char("8", "*", popup = "•×★"),
+        Key.char("9", "(", popup = "[{<"),
+        Key.char("0", ")", popup = "]}>"),
+        Key.char("-", "_", popup = "–—·"),
+        Key.char("=", "+", popup = "±≠≈"),
         Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.8f, repeatable = true)
     )
 
     private fun topLetters(): List<Key> = listOf(
         Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB, weight = 1.4f),
-        Key.letter("q"), Key.letter("w"), Key.letter("e", popup = "èéêëē"),
-        Key.letter("r"), Key.letter("t"), Key.letter("y", popup = "ÿý"),
-        Key.letter("u", popup = "üùúûū"), Key.letter("i", popup = "ïìíîī"),
-        Key.letter("o", popup = "öòóôõøō"), Key.letter("p"),
-        Key.char("[", "{"),
-        Key.char("]", "}"),
-        Key.char("\\", "|", weight = 1.2f)
+        Key.letter("q"),
+        Key.letter("w"),
+        Key.letter("e", popup = "èéêëēėę"),
+        Key.letter("r"),
+        Key.letter("t", popup = "þ"),
+        Key.letter("y", popup = "ÿýȳ"),
+        Key.letter("u", popup = "üùúûūų"),
+        Key.letter("i", popup = "ïìíîīįı"),
+        Key.letter("o", popup = "öòóôõøōœ"),
+        Key.letter("p"),
+        Key.char("[", "{", popup = "「【〔"),
+        Key.char("]", "}", popup = "」】〕"),
+        Key.char("\\", "|", popup = "¦/", weight = 1.2f)
     )
 
     private fun homeLetters(): List<Key> = listOf(
         Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.6f),
-        Key.letter("a", popup = "àáâäãåæā"),
-        Key.letter("s", popup = "ßśš"),
-        Key.letter("d"),
+        Key.letter("a", popup = "àáâäãåæāąª"),
+        Key.letter("s", popup = "ßśšșş"),
+        Key.letter("d", popup = "ðď"),
         Key.letter("f"),
-        Key.letter("g"),
+        Key.letter("g", popup = "ğ"),
         Key.letter("h"),
         Key.letter("j"),
         Key.letter("k"),
-        Key.letter("l"),
-        Key.char(";", ":"),
-        Key.char("'", "\""),
+        Key.letter("l", popup = "łĺľļ"),
+        Key.char(";", ":", popup = "·"),
+        Key.char("'", "\"", popup = "‘’‚‛"),
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 2.0f)
     )
 
     private fun bottomLetters(): List<Key> = listOf(
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 2.0f),
-        Key.letter("z"), Key.letter("x"), Key.letter("c", popup = "çć"),
-        Key.letter("v"), Key.letter("b"), Key.letter("n", popup = "ñń"),
+        Key.letter("z", popup = "žźż"),
+        Key.letter("x"),
+        Key.letter("c", popup = "çćč©"),
+        Key.letter("v"),
+        Key.letter("b"),
+        Key.letter("n", popup = "ñńň"),
         Key.letter("m"),
-        Key.char(",", "<"),
-        Key.char(".", ">"),
-        Key.char("/", "?"),
+        Key.char(",", "<", popup = "«‹„"),
+        Key.char(".", ">", popup = "…»›"),
+        Key.char("/", "?", popup = "¿÷"),
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 2.0f)
     )
 

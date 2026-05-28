@@ -5,10 +5,12 @@ import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import com.pckeyboard.ime.model.Key
 import com.pckeyboard.ime.model.KeyType
 import com.pckeyboard.ime.model.KeyboardLayout
@@ -33,6 +35,10 @@ class KeyboardView @JvmOverloads constructor(
     private val handler = Handler(Looper.getMainLooper())
     private val repeatRunnables = mutableMapOf<KeyView, Runnable>()
     private val prefs = KeyboardPrefs(context)
+
+    private var popupWindow: PopupWindow? = null
+    private var popupView: KeyPopupView? = null
+    private var popupAnchor: KeyView? = null
 
     init {
         orientation = VERTICAL
@@ -151,6 +157,88 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onKeyCancel(view: KeyView) {
         stopRepeat(view)
+    }
+
+    override fun onKeyLongPress(view: KeyView) {
+        stopRepeat(view)
+        val chars = view.key.popupChars ?: return
+        showPopup(view, chars)
+        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+    }
+
+    override fun onKeyPopupMove(view: KeyView, rawX: Float, rawY: Float) {
+        val popup = popupView ?: return
+        val loc = IntArray(2)
+        popup.getLocationOnScreen(loc)
+        popup.selectedIndex = popup.findIndexForX(rawX - loc[0])
+    }
+
+    override fun onKeyPopupRelease(view: KeyView) {
+        val selected = popupView?.let { p ->
+            p.selectedIndex.takeIf { it in p.chars.indices }?.let { p.chars[it] }
+        }
+        dismissPopup()
+        if (selected != null) {
+            val charKey = Key.char(selected)
+            listener?.onKey(charKey, modifiers)
+            modifiers.consumeAfterChar()
+            refresh()
+        } else {
+            // No selection — treat as normal tap on the anchor key.
+            handleKey(view.key)
+        }
+    }
+
+    override fun onKeyPopupCancel(view: KeyView) {
+        dismissPopup()
+    }
+
+    private fun showPopup(anchor: KeyView, chars: String) {
+        dismissPopup()
+        val theme = theme ?: return
+        // Include the base char first so a quick release without sliding picks
+        // it back; then de-duplicate the rest.
+        val base = anchor.key.label
+        val all = (listOf(base) + chars.map { it.toString() }).distinct()
+        val popup = KeyPopupView(context, all, theme)
+        // Pre-select the base character so a straight release commits it.
+        popup.selectedIndex = 0
+        popupView = popup
+        popupAnchor = anchor
+
+        popup.measure(
+            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+        )
+        val w = popup.measuredWidth
+        val h = popup.measuredHeight
+
+        val loc = IntArray(2)
+        anchor.getLocationOnScreen(loc)
+        val centerX = loc[0] + anchor.width / 2
+        val x = (centerX - w / 2).coerceAtLeast(0)
+        val y = (loc[1] - h - dp(4f)).coerceAtLeast(0)
+
+        popupWindow = PopupWindow(popup, w, h, false).apply {
+            isClippingEnabled = false
+            // We route touches through the anchor KeyView; this window is
+            // purely visual.
+            isTouchable = false
+            isFocusable = false
+            showAtLocation(this@KeyboardView, Gravity.NO_GRAVITY, x, y)
+        }
+    }
+
+    private fun dismissPopup() {
+        popupWindow?.dismiss()
+        popupWindow = null
+        popupView = null
+        popupAnchor = null
+    }
+
+    override fun onDetachedFromWindow() {
+        dismissPopup()
+        super.onDetachedFromWindow()
     }
 
     private fun startRepeat(view: KeyView) {
