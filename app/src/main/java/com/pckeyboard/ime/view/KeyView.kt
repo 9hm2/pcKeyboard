@@ -54,17 +54,19 @@ class KeyView(
         val pad = dp(theme.keySpacingDp / 2f)
         rect.set(pad, pad, width - pad, height - pad)
         val radius = dp(theme.keyCornerRadiusDp.toFloat())
+        val modState = modifierState()
 
-        bgPaint.color = backgroundColorForState()
+        bgPaint.color = backgroundColorForState(modState)
+        bgPaint.style = Paint.Style.FILL
         canvas.drawRoundRect(rect, radius, radius, bgPaint)
 
-        // accent highlight when modifier is locked or sticky-on
-        val highlight = highlightColorForState()
-        if (highlight != null) {
-            bgPaint.color = highlight
-            val border = dp(2f)
+        // ONCE → bold accent border so the user can see a modifier is armed
+        // for the next keypress without being confused with the LOCKED state.
+        if (modState == ModifierState.State.ONCE) {
+            val border = dp(3f)
             val r = RectF(rect)
-            r.inset(dp(1.5f), dp(1.5f))
+            r.inset(border / 2f, border / 2f)
+            bgPaint.color = theme.accentColor
             bgPaint.style = Paint.Style.STROKE
             bgPaint.strokeWidth = border
             canvas.drawRoundRect(r, radius, radius, bgPaint)
@@ -80,10 +82,33 @@ class KeyView(
         }
 
         val mainSize = preferredTextSize()
-        textPaint.color = textColorForState()
+        textPaint.color = textColorForState(modState)
         textPaint.textSize = mainSize
         val cy = rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2
         canvas.drawText(mainText, rect.centerX(), cy, textPaint)
+
+        // LOCKED → underline under the label to mark "stays on until tapped
+        // again", visually distinct from the ONCE border.
+        if (modState == ModifierState.State.LOCKED) {
+            val lineW = mainSize * 0.9f
+            val lineY = cy + textPaint.descent() + dp(2f)
+            bgPaint.color = textColorForState(modState)
+            canvas.drawRoundRect(
+                rect.centerX() - lineW / 2f, lineY,
+                rect.centerX() + lineW / 2f, lineY + dp(2.5f),
+                dp(1.5f), dp(1.5f),
+                bgPaint
+            )
+        }
+
+        // ONCE → small accent dot in the top-right corner so even without the
+        // border (e.g. on themes with similar accent / modifier colours) the
+        // armed state is obvious.
+        if (modState == ModifierState.State.ONCE) {
+            val dotR = dp(3f)
+            bgPaint.color = theme.accentColor
+            canvas.drawCircle(rect.right - dp(8f), rect.top + dp(8f), dotR, bgPaint)
+        }
 
         // secondary (shifted) hint for char keys (e.g. "!" above "1")
         if (key.type == KeyType.CHAR && !isShifted && key.shiftLabel != null) {
@@ -98,8 +123,19 @@ class KeyView(
         }
     }
 
-    private fun backgroundColorForState(): Int {
+    private fun modifierState(): ModifierState.State = when (key.type) {
+        KeyType.SHIFT -> modifiers.shift
+        KeyType.CTRL -> modifiers.ctrl
+        KeyType.ALT -> modifiers.alt
+        KeyType.META -> modifiers.meta
+        KeyType.FN -> modifiers.fn
+        KeyType.CAPS_LOCK -> if (modifiers.capsLock) ModifierState.State.LOCKED else ModifierState.State.OFF
+        else -> ModifierState.State.OFF
+    }
+
+    private fun backgroundColorForState(modState: ModifierState.State): Int {
         if (isDown) return theme.keyPressedColor
+        if (modState == ModifierState.State.LOCKED) return theme.accentColor
         return when (key.type) {
             KeyType.SPACE, KeyType.ENTER -> theme.accentColor
             KeyType.LETTER, KeyType.CHAR -> theme.keyBackgroundColor
@@ -107,26 +143,12 @@ class KeyView(
         }
     }
 
-    private fun textColorForState(): Int = when (key.type) {
-        KeyType.SPACE, KeyType.ENTER -> theme.accentTextColor
-        KeyType.LETTER, KeyType.CHAR -> theme.keyTextColor
-        else -> theme.modifierTextColor
-    }
-
-    private fun highlightColorForState(): Int? {
-        val state = when (key.type) {
-            KeyType.SHIFT -> modifiers.shift
-            KeyType.CTRL -> modifiers.ctrl
-            KeyType.ALT -> modifiers.alt
-            KeyType.META -> modifiers.meta
-            KeyType.FN -> modifiers.fn
-            KeyType.CAPS_LOCK -> if (modifiers.capsLock) ModifierState.State.LOCKED else ModifierState.State.OFF
-            else -> return null
-        }
-        return when (state) {
-            ModifierState.State.OFF -> null
-            ModifierState.State.ONCE -> theme.accentColor
-            ModifierState.State.LOCKED -> theme.accentColor
+    private fun textColorForState(modState: ModifierState.State): Int {
+        if (modState == ModifierState.State.LOCKED) return theme.accentTextColor
+        return when (key.type) {
+            KeyType.SPACE, KeyType.ENTER -> theme.accentTextColor
+            KeyType.LETTER, KeyType.CHAR -> theme.keyTextColor
+            else -> theme.modifierTextColor
         }
     }
 
