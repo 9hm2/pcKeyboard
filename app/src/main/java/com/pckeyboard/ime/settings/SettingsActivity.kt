@@ -7,10 +7,13 @@ import android.widget.SeekBar
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.pckeyboard.ime.BuildConfig
+import com.pckeyboard.ime.R
 import com.pckeyboard.ime.databinding.ActivitySettingsBinding
 import com.pckeyboard.ime.editor.ThemeEditorActivity
 import com.pckeyboard.ime.theme.KeyboardTheme
 import com.pckeyboard.ime.theme.ThemeRepository
+import com.pckeyboard.ime.updater.UpdateUi
 
 /**
  * Settings: tweak keyboard sizing (height, side margins, split mode),
@@ -55,7 +58,13 @@ class SettingsActivity : AppCompatActivity() {
             startActivity(Intent(this, ThemeEditorActivity::class.java))
         }
 
+        binding.installedVersion.text =
+            getString(R.string.settings_installed_version, BuildConfig.VERSION_NAME)
+        binding.btnCheckUpdates.setOnClickListener { UpdateUi.runManualCheck(this) }
+
         wireSizingControls()
+        // Silent background auto-check too — same throttle as SetupActivity.
+        UpdateUi.runAutoCheck(this)
     }
 
     override fun onResume() {

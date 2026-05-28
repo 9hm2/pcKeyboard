@@ -13,28 +13,39 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Polls the GitHub releases API for the latest published APK and, if newer
- * than the installed build, returns an [UpdateInfo] the UI can offer to the
- * user. Caches the last check timestamp to avoid hammering the API.
+ * Polls the GitHub releases API for the latest published APK.
  *
- * The CI workflow publishes releases under the same repo path; the
- * matching .apk asset's `browser_download_url` is what we feed to
- * [DownloadManager] when the user accepts the prompt.
+ * The CI workflow publishes a release on every run. The in-app updater
+ * fetches that release, compares the tag to [BuildConfig.VERSION_NAME]
+ * and asks the UI to surface an [UpdateInfo] when newer.
+ *
+ * The throttle cache only applies to *automatic* checks (force = false);
+ * manual "Check now" taps always hit the network so users aren't stuck
+ * waiting 12 hours after a stale auto-check.
  */
 class UpdateChecker(private val context: Context) {
 
     private val prefs =
         PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
 
+    sealed class Result {
+        /** A newer release is available. */
+        data class Available(val info: UpdateInfo) : Result()
+        /** Installed version matches or exceeds the latest release. */
+        object UpToDate : Result()
+        /** Network / API failure. */
+        object Error : Result()
+        /** Auto-check skipped because the throttle window hasn't elapsed. */
+        object Throttled : Result()
+    }
+
     /**
-     * @param force ignore the per-12h throttle cache and check immediately.
-     * @return non-null only when the remote release is strictly newer than
-     *   the installed build.
+     * @param force ignore the throttle cache; hits the network unconditionally.
      */
-    suspend fun checkForUpdate(force: Boolean = false): UpdateInfo? = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdate(force: Boolean = false): Result = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         if (!force && now - prefs.getLong(KEY_LAST_CHECK, 0L) < CHECK_INTERVAL_MS) {
-            return@withContext null
+            return@withContext Result.Throttled
         }
         try {
             val conn = (URL(RELEASES_URL).openConnection() as HttpURLConnection).apply {
@@ -45,18 +56,18 @@ class UpdateChecker(private val context: Context) {
                 readTimeout = 10_000
             }
             try {
-                if (conn.responseCode != 200) return@withContext null
+                if (conn.responseCode != 200) return@withContext Result.Error
                 val raw = conn.inputStream.bufferedReader().readText()
                 prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
 
                 val obj = JSONObject(raw)
                 val tag = obj.optString("tag_name").removePrefix("v").trim()
-                if (tag.isEmpty()) return@withContext null
-                if (!isNewer(tag, BuildConfig.VERSION_NAME)) return@withContext null
+                if (tag.isEmpty()) return@withContext Result.Error
+                if (!isNewer(tag, BuildConfig.VERSION_NAME)) return@withContext Result.UpToDate
 
                 val body = obj.optString("body", "").trim()
                 val pageUrl = obj.optString("html_url", null) ?: REPO_RELEASES_URL
-                val assets = obj.optJSONArray("assets") ?: return@withContext null
+                val assets = obj.optJSONArray("assets") ?: return@withContext Result.Error
                 var apkUrl: String? = null
                 for (i in 0 until assets.length()) {
                     val asset = assets.getJSONObject(i)
@@ -65,17 +76,19 @@ class UpdateChecker(private val context: Context) {
                         break
                     }
                 }
-                UpdateInfo(
-                    versionName = tag,
-                    releaseNotes = body,
-                    apkUrl = apkUrl,
-                    releasePageUrl = pageUrl
+                Result.Available(
+                    UpdateInfo(
+                        versionName = tag,
+                        releaseNotes = body,
+                        apkUrl = apkUrl,
+                        releasePageUrl = pageUrl
+                    )
                 )
             } finally {
                 conn.disconnect()
             }
         } catch (_: Throwable) {
-            null
+            Result.Error
         }
     }
 

@@ -52,4 +52,10 @@
     <string name="update_btn_later">Later</string>
     <string name="update_btn_view_page">View on GitHub</string>
     <string name="update_downloading">Downloading update…</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_up_to_date">You\'re on the latest version.</string>
+    <string name="update_check_failed">Could not check for updates. Check your network and try again.</string>
+    <string name="settings_updates">Updates</string>
+    <string name="settings_check_updates">Check now</string>
+    <string name="settings_installed_version">Installed: %1$s</string>
 </resources>
