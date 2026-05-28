@@ -29,9 +29,18 @@ class KeyPopupView(
             if (field != value) { field = value; invalidate() }
         }
 
-    val cellWidth: Int = dp(46f)
-    val cellHeight: Int = dp(58f)
     val pad: Float = dp(6f).toFloat()
+    /** Cell width scales with screen + char count so the popup never spills
+     *  off the screen — for letters like 'o' with 8+ alternates the cells
+     *  shrink towards the floor instead of overflowing the device width. */
+    val cellWidth: Int = run {
+        val screenW = resources.displayMetrics.widthPixels
+        val sideMargin = dp(16f)
+        val available = (screenW - (pad.toInt() * 2) - sideMargin).coerceAtLeast(dp(64f))
+        val ideal = available / chars.size.coerceAtLeast(1)
+        ideal.coerceIn(dp(28f), dp(46f))
+    }
+    val cellHeight: Int = dp(58f)
     private val cornerRadius: Float = dp(12f).toFloat()
     private val cellCornerRadius: Float = dp(8f).toFloat()
 
@@ -39,16 +48,12 @@ class KeyPopupView(
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP, 22f, resources.displayMetrics
-        )
+        textSize = cellWidth * 0.5f
     }
     private val selectedTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create("sans-serif", Typeface.BOLD)
-        textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP, 26f, resources.displayMetrics
-        )
+        textSize = cellWidth * 0.58f
     }
     private val rect = RectF()
 

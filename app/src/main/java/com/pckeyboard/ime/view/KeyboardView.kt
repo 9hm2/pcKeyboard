@@ -243,7 +243,16 @@ class KeyboardView @JvmOverloads constructor(
         // — that way it can be aligned directly above the pressed key and a
         // straight release without sliding commits the base char.
         val base = anchor.key.label
-        val others = chars.map { it.toString() }.filter { it != base }.distinct()
+        // For symbol / punctuation keys (KeyType.CHAR), expose the shift-label
+        // (e.g. '<' on the comma key, '?' on the slash key) in the popup so
+        // every character a key can produce is reachable without juggling
+        // Shift first. Letter keys deliberately exclude it — their shift-label
+        // is just the uppercase form, already accessible via Shift/Caps.
+        val shiftLabel = if (anchor.key.type == KeyType.CHAR) {
+            anchor.key.shiftLabel?.takeIf { it != base }
+        } else null
+        val rawOthers = listOfNotNull(shiftLabel) + chars.map { it.toString() }
+        val others = rawOthers.filter { it != base }.distinct()
         val leftCount = others.size / 2
         val all = others.take(leftCount) + listOf(base) + others.drop(leftCount)
         val baseIndex = leftCount
