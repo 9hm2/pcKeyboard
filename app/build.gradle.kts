@@ -13,7 +13,6 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
-        resourceConfigurations += listOf("en")
     }
 
     // Release keystore is NOT committed to the repo — provide it locally

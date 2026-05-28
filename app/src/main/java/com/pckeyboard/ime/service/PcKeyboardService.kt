@@ -6,6 +6,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
+import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.InputMethodSubtype
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
 import com.pckeyboard.ime.model.Key
@@ -40,6 +42,22 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onCreate() {
         super.onCreate()
         themeRepo = ThemeRepository(this)
+        // Initialise the current language from whichever subtype the system
+        // already has selected for us — usually the user's last choice.
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+        currentLayoutId = LayoutRegistry.resolveLocale(
+            imm?.currentInputMethodSubtype?.locale
+        )
+    }
+
+    override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype?) {
+        super.onCurrentInputMethodSubtypeChanged(newSubtype)
+        currentLayoutId = LayoutRegistry.resolveLocale(newSubtype?.locale)
+        // Reset to the main keyboard whenever the language changes — staying
+        // on the symbols page across a language switch is rarely what you
+        // want and confuses the user.
+        currentMode = LayoutMode.MAIN
+        bindCurrentLayout()
     }
 
     override fun onCreateInputView(): View {
@@ -104,7 +122,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             KeyType.FN -> if (key.keyCode != 0) sendKey(key.keyCode, modifiers)
             KeyType.SYMBOL_SWITCH -> switchSymbols()
             KeyType.LAYOUT_SWITCH -> switchSymbolsShift()
-            KeyType.LANGUAGE_SWITCH -> switchToNextInputMethod(false)
+            // Cycle this IME's own subtypes first (Hungarian → German →
+            // Spanish → English → ...), falling through to the next IME
+            // only when no more subtypes remain.
+            KeyType.LANGUAGE_SWITCH -> switchToNextInputMethod(true)
             KeyType.HIDE -> requestHideSelf(0)
             KeyType.LETTER, KeyType.CHAR -> {
                 val c = pickChar(key, modifiers)

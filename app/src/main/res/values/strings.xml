@@ -2,6 +2,9 @@
 <resources>
     <string name="app_name">pcKeyboard</string>
     <string name="subtype_en_us">English (US)</string>
+    <string name="subtype_hu_hu">Hungarian</string>
+    <string name="subtype_de_de">German</string>
+    <string name="subtype_es_es">Spanish</string>
 
     <string name="setup_subtitle">A full PC-style keyboard with Ctrl, Alt and a function row — built for foldables and phones.</string>
     <string name="setup_step_enable">1. Enable pcKeyboard</string>

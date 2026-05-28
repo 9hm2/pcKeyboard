@@ -17,9 +17,14 @@ with proper IME integration so apps see real `Ctrl+C`, `Alt+Tab`, etc.
 - **Foldable / tablet aware**: at ≥600 dp the full PC layout is shown; on
   narrow phones a compact 5-row variant is shown automatically (F-row
   dropped). Switches live on configuration change (fold / unfold / rotate).
-- **Extensible languages**: a locale is one `KeyboardLayout` object plus a
-  registration in `LayoutRegistry` — no renderer changes needed. English
-  (US) ships out of the box.
+- **Multiple languages out of the box**: English (US, QWERTY), Hungarian
+  (QWERTZ with á / é / í / ó ö ő / ú ü ű popups), German (QWERTZ with
+  ä / ö / ü / ß), Spanish (QWERTY with ñ as a dedicated key, ¿ on the
+  slash). Tap the globe key on the bottom row to cycle.
+- **Extensible**: a new locale is one `*.Layout.kt` file using
+  `LayoutBlocks` for the shared Fn / number / control / symbol rows, a
+  `LayoutPack` entry in `LayoutRegistry`, and a `<subtype>` in
+  `res/xml/method.xml`.
 
 ### Modifiers
 
@@ -148,8 +153,13 @@ GPL v3 — see [LICENSE](LICENSE).
 model/         Key, KeyType, KeyboardLayout, ModifierState (sticky tap-once /
                tap-lock cycle, KeyEvent meta-flag conversion).
 
-layout/        EnglishLayout (main + symbols + symbolsShift), LayoutRegistry,
-               LayoutVariant / LayoutSelector (compact ↔ full PC).
+layout/        LayoutBlocks      — shared Fn / number / control / symbols
+                                    rows reused by every locale.
+               EnglishLayout / HungarianLayout / GermanLayout /
+                 SpanishLayout     — locale-specific letter rows.
+               LayoutRegistry     — locale id → LayoutPack lookup.
+               LayoutVariant /
+                 LayoutSelector   — compact (no Fn row) ↔ full PC variant.
 
 theme/         KeyboardTheme data class, built-in Themes (Light / Dark / Black),
                ThemeRepository (custom theme persistence in SharedPreferences).
