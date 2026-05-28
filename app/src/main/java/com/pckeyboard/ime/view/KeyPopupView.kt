@@ -20,6 +20,7 @@ import com.pckeyboard.ime.theme.KeyboardTheme
 class KeyPopupView(
     context: Context,
     val chars: List<String>,
+    val baseIndex: Int,
     private val theme: KeyboardTheme
 ) : View(context) {
 
@@ -28,10 +29,11 @@ class KeyPopupView(
             if (field != value) { field = value; invalidate() }
         }
 
-    val cellWidth: Int = dp(44f)
-    val cellHeight: Int = dp(56f)
-    private val pad: Float = dp(4f).toFloat()
-    private val cornerRadius: Float = dp(10f).toFloat()
+    val cellWidth: Int = dp(46f)
+    val cellHeight: Int = dp(58f)
+    val pad: Float = dp(6f).toFloat()
+    private val cornerRadius: Float = dp(12f).toFloat()
+    private val cellCornerRadius: Float = dp(8f).toFloat()
 
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -39,6 +41,13 @@ class KeyPopupView(
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         textSize = TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_SP, 22f, resources.displayMetrics
+        )
+    }
+    private val selectedTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        textSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP, 26f, resources.displayMetrics
         )
     }
     private val rect = RectF()
@@ -50,31 +59,60 @@ class KeyPopupView(
         )
     }
 
-    /** Returns popup char index for a touch x-coord local to this view. */
+    /** Returns popup char index for a touch x-coord local to this view.
+     *  Clamps to the nearest end cell so the user can never "fall off" the
+     *  popup and lose their selection while still holding the gesture. */
     fun findIndexForX(x: Float): Int {
+        if (chars.isEmpty()) return -1
         val inside = x - pad
-        if (inside < 0f || inside > cellWidth * chars.size) return -1
         return (inside / cellWidth).toInt().coerceIn(0, chars.size - 1)
     }
 
     override fun onDraw(canvas: Canvas) {
-        // overall background card
+        // Outer card.
         bgPaint.color = theme.modifierKeyColor
         rect.set(0f, 0f, width.toFloat(), height.toFloat())
         canvas.drawRoundRect(rect, cornerRadius, cornerRadius, bgPaint)
 
+        // Faint dividers between cells so each character has its own slot.
+        bgPaint.color = theme.dividerColor
+        for (i in 1 until chars.size) {
+            val x = pad + i * cellWidth
+            canvas.drawRect(x - dp(0.5f), pad + dp(8f), x + dp(0.5f), pad + cellHeight - dp(8f), bgPaint)
+        }
+
         for (i in chars.indices) {
             val cellLeft = pad + i * cellWidth
-            rect.set(cellLeft, pad, cellLeft + cellWidth, pad + cellHeight)
-            if (i == selectedIndex) {
+            val isSelected = i == selectedIndex
+
+            if (isSelected) {
+                // Selected cell expands outside the card so it pops visually.
+                val grow = dp(4f)
+                rect.set(
+                    cellLeft - grow,
+                    -grow.toFloat(),
+                    cellLeft + cellWidth + grow,
+                    pad + cellHeight + grow
+                )
                 bgPaint.color = theme.accentColor
-                canvas.drawRoundRect(rect, cornerRadius, cornerRadius, bgPaint)
-                textPaint.color = theme.accentTextColor
+                canvas.drawRoundRect(rect, cellCornerRadius, cellCornerRadius, bgPaint)
+                selectedTextPaint.color = theme.accentTextColor
+                val cy = rect.centerY() - (selectedTextPaint.descent() + selectedTextPaint.ascent()) / 2
+                canvas.drawText(chars[i], rect.centerX(), cy, selectedTextPaint)
             } else {
+                // Mark the "home" cell (the base character) with a soft tint
+                // so the user knows where the popup will commit if they
+                // release without sliding.
+                if (i == baseIndex) {
+                    rect.set(cellLeft, pad, cellLeft + cellWidth, pad + cellHeight)
+                    bgPaint.color = theme.keyBackgroundColor
+                    canvas.drawRoundRect(rect, cellCornerRadius, cellCornerRadius, bgPaint)
+                }
                 textPaint.color = theme.keyTextColor
+                rect.set(cellLeft, pad, cellLeft + cellWidth, pad + cellHeight)
+                val cy = rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2
+                canvas.drawText(chars[i], rect.centerX(), cy, textPaint)
             }
-            val cy = rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2
-            canvas.drawText(chars[i], rect.centerX(), cy, textPaint)
         }
     }
 

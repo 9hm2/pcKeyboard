@@ -238,10 +238,18 @@ class KeyboardView @JvmOverloads constructor(
     private fun showPopup(anchor: KeyView, chars: String) {
         dismissPopup()
         val theme = theme ?: return
+
+        // Arrange chars so the base character sits in the middle of the popup
+        // — that way it can be aligned directly above the pressed key and a
+        // straight release without sliding commits the base char.
         val base = anchor.key.label
-        val all = (listOf(base) + chars.map { it.toString() }).distinct()
-        val popup = KeyPopupView(context, all, theme)
-        popup.selectedIndex = 0
+        val others = chars.map { it.toString() }.filter { it != base }.distinct()
+        val leftCount = others.size / 2
+        val all = others.take(leftCount) + listOf(base) + others.drop(leftCount)
+        val baseIndex = leftCount
+
+        val popup = KeyPopupView(context, all, baseIndex, theme)
+        popup.selectedIndex = baseIndex
         popup.elevation = dp(8f).toFloat()
         popupView = popup
 
@@ -252,7 +260,6 @@ class KeyboardView @JvmOverloads constructor(
         val popupW = popup.measuredWidth
         val popupH = popup.measuredHeight
 
-        // Position relative to KeyboardView's own coords (not screen coords).
         val anchorLoc = IntArray(2)
         val selfLoc = IntArray(2)
         anchor.getLocationInWindow(anchorLoc)
@@ -262,15 +269,21 @@ class KeyboardView @JvmOverloads constructor(
         val anchorY = anchorLoc[1] - selfLoc[1]
         val anchorCenterX = anchorX + anchor.width / 2
 
-        var popupX = anchorCenterX - popupW / 2
+        // Centre the BASE cell over the anchor, not the whole popup. That keeps
+        // the resting selection on the base char and makes left/right slides
+        // map cleanly to neighbouring options.
+        val baseCellCenterInPopup = popup.pad + popup.cellWidth * baseIndex + popup.cellWidth / 2f
+        var popupX = (anchorCenterX - baseCellCenterInPopup).toInt()
         var popupY = anchorY - popupH - dp(4f)
 
         // Clamp horizontally inside the keyboard.
         if (popupX < 0) popupX = 0
-        if (popupX + popupW > width) popupX = width - popupW
+        if (popupX + popupW > width) popupX = (width - popupW).coerceAtLeast(0)
 
-        // If above the keyboard top, fall back to showing it below the key.
-        if (popupY < 0) popupY = anchorY + anchor.height + dp(4f)
+        // Never fall below the anchor: clamp to the top of the keyboard if
+        // there isn't enough room above. Worst case the popup overlaps the
+        // anchor visually, but the user is looking at the popup at that point.
+        if (popupY < 0) popupY = 0
 
         val lp = LayoutParams(popupW, popupH).apply {
             leftMargin = popupX
