@@ -132,10 +132,16 @@ generates the Gradle wrapper if missing, runs lint and uploads the debug
 APK. **Release APKs are built on the developer's device only**, never on
 CI, so the release signing key never has to leave the local machine.
 
-The workflow has an optional `release_tag` input — pass a tag (e.g.
-`v1.2.0`) and it'll also publish a GitHub Release with the freshly-built
-debug APK attached. The in-app updater (see below) finds this release
-and offers it to the user.
+Every workflow run **always publishes a GitHub Release** with the
+freshly-built debug APK attached, so the in-app updater (see below)
+always has something newer to find. Inputs:
+
+- `release_tag` — optional. Custom tag like `v1.2.0`. If empty, the
+  workflow auto-tags with `ci-YYYYMMDD-HHMMSS` (UTC).
+- `prerelease` — optional boolean. Marks the release as a pre-release,
+  which excludes it from `/releases/latest` (and therefore from the
+  in-app updater) so you can publish test builds without notifying
+  users.
 
 ### In-app updater
 

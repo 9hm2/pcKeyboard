@@ -1,21 +1,28 @@
 name: Android CI
 
-# Manual-only — pass a release tag in the input to also publish a GitHub
-# Release with the built debug APK attached.
+# Manual-only — every run publishes a GitHub Release with the freshly
+# built debug APK so the in-app updater can pick it up. Set `release_tag`
+# to a custom tag (e.g. v1.2.0) or leave blank and the workflow auto-
+# generates `ci-YYYYMMDD-HHMMSS` from the run's UTC timestamp.
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Tag for a GitHub Release (leave empty to only upload as artifact)"
+        description: "Release tag (e.g. v1.2.0). Leave blank to auto-tag with UTC timestamp."
         required: false
         type: string
+      prerelease:
+        description: "Mark as pre-release (excluded from /releases/latest and the in-app updater)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
-  contents: write   # softprops/action-gh-release needs this when release_tag is set
+  contents: write   # softprops/action-gh-release needs this to publish
 
 jobs:
   build:
-    name: Build debug APK
+    name: Build & publish debug APK
     runs-on: ubuntu-latest
 
     steps:
@@ -50,19 +57,30 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --stacktrace --warning-mode=summary
 
-      - name: Rename APK with version
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            TAG="${{ inputs.release_tag }}"
+          else
+            TAG="ci-$(date -u +%Y%m%d-%H%M%S)"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Publishing release tag: $TAG"
+
+      - name: Rename APK
         id: rename
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk \
-             dist/pckeyboard-debug.apk
-          echo "apk_path=dist/pckeyboard-debug.apk" >> "$GITHUB_OUTPUT"
+             dist/pckeyboard-${{ steps.tag.outputs.tag }}.apk
+          echo "apk_path=dist/pckeyboard-${{ steps.tag.outputs.tag }}.apk" >> "$GITHUB_OUTPUT"
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: pckeyboard-debug
-          path: dist/pckeyboard-debug.apk
+          path: ${{ steps.rename.outputs.apk_path }}
           if-no-files-found: error
 
       - name: Upload lint report
@@ -73,13 +91,11 @@ jobs:
           path: app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
 
-      # Publish a GitHub Release with the APK so the in-app updater can find
-      # it. Skipped when release_tag is empty (artifact-only build).
       - name: Create GitHub Release
-        if: ${{ inputs.release_tag != '' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.release_tag }}
-          name: ${{ inputs.release_tag }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
+          prerelease: ${{ inputs.prerelease }}
           files: ${{ steps.rename.outputs.apk_path }}
