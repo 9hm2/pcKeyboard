@@ -127,27 +127,10 @@ generates the Gradle wrapper if missing, runs lint and uploads the debug
 APK. **Release APKs are built on the developer's device only**, never on
 CI, so the release signing key never has to leave the local machine.
 
-### Signing
-
-The **debug keystore** (`app/debug.keystore`, alias `androiddebugkey`,
-password `android` — the well-known Android default) is committed so
-every build machine signs debug APKs identically. You can install a
-debug APK from CI on top of a locally built one without uninstalling.
-
-The **release keystore is private** and intentionally not in the repo.
-Provide it locally as `app/release.keystore` and set these env vars
-before running `assembleRelease`:
-
-| Env var | Purpose |
-|---|---|
-| `PCK_KEYSTORE_FILE` | path to the keystore (default `app/release.keystore`) |
-| `PCK_KEYSTORE_PASSWORD` | store password |
-| `PCK_KEY_ALIAS` | key alias (default `pckeyboard`) |
-| `PCK_KEY_PASSWORD` | key password |
-
-If any of those are missing, `assembleRelease` still builds — it just
-produces `app-release-unsigned.apk` that you can sign later with
-`apksigner`.
+The debug keystore (`app/debug.keystore`, the well-known Android default)
+is committed so debug APKs are signed identically on every machine. The
+release keystore is not in the repo — see `app/build.gradle.kts` for the
+env vars `assembleRelease` reads when signing locally.
 
 ## License
 
