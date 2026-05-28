@@ -43,11 +43,23 @@ class KeyboardPrefs(context: Context) {
             prefs.edit().putFloat(KEY_SPLIT_GAP, value.coerceIn(0.5f, 6.0f)).apply()
         }
 
+    /**
+     * Time in milliseconds the user has to hold a key before a long-press
+     * fires. Applies to every key (popup characters AND the space-trackpad).
+     * Clamped to [150, 1000].
+     */
+    var longPressDelayMs: Int
+        get() = prefs.getInt(KEY_LP_DELAY, 380).coerceIn(150, 1000)
+        set(value) {
+            prefs.edit().putInt(KEY_LP_DELAY, value.coerceIn(150, 1000)).apply()
+        }
+
     companion object {
         private const val KEY_HEIGHT = "kb_height_scale"
         private const val KEY_HPAD = "kb_horizontal_padding"
         private const val KEY_SPLIT = "kb_split_enabled"
         private const val KEY_SPLIT_GAP = "kb_split_gap_weight"
+        private const val KEY_LP_DELAY = "kb_long_press_delay_ms"
 
         /** Threshold above which split mode is applied. */
         const val SPLIT_MIN_WIDTH_DP = 600

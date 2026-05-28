@@ -129,6 +129,15 @@ class SettingsActivity : AppCompatActivity() {
             prefs.splitGapWeight = v
             binding.splitGapValue.text = String.format("%.1f", v)
         })
+
+        // Long-press delay: 150–1000 ms, slider in 10 ms steps (0..85 → +150).
+        binding.longPressSlider.progress = (prefs.longPressDelayMs - 150) / 10
+        binding.longPressValue.text = "${prefs.longPressDelayMs} ms"
+        binding.longPressSlider.setOnSeekBarChangeListener(simpleSeek { p ->
+            val v = 150 + p * 10
+            prefs.longPressDelayMs = v
+            binding.longPressValue.text = "$v ms"
+        })
     }
 
     private fun formatPercent(v: Float): String = "${(v * 100).toInt()}%"

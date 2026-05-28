@@ -12,6 +12,7 @@ import android.view.View
 import com.pckeyboard.ime.model.Key
 import com.pckeyboard.ime.model.KeyType
 import com.pckeyboard.ime.model.ModifierState
+import com.pckeyboard.ime.settings.KeyboardPrefs
 import com.pckeyboard.ime.theme.KeyboardTheme
 
 /**
@@ -144,14 +145,17 @@ class KeyView(
 
     private var popupActive: Boolean = false
     private var longPressRunnable: Runnable? = null
-    private val longPressTimeoutMs: Long = 380L
+    private val prefs by lazy { KeyboardPrefs(context) }
+
+    private fun canLongPress(): Boolean =
+        key.popupChars != null || key.type == KeyType.SPACE
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 isDown = true
                 listener?.onKeyDown(this)
-                if (key.popupChars != null) scheduleLongPress()
+                if (canLongPress()) scheduleLongPress()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -189,13 +193,13 @@ class KeyView(
 
     private fun scheduleLongPress() {
         val r = Runnable {
-            if (isDown && key.popupChars != null) {
+            if (isDown && canLongPress()) {
                 popupActive = true
                 listener?.onKeyLongPress(this)
             }
         }
         longPressRunnable = r
-        postDelayed(r, longPressTimeoutMs)
+        postDelayed(r, prefs.longPressDelayMs.toLong())
     }
 
     private fun cancelLongPressTimer() {

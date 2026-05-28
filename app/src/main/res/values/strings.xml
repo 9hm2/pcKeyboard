@@ -22,6 +22,8 @@
     <string name="settings_split">Split keyboard</string>
     <string name="settings_split_hint">Adds a centre gap on wide screens for two-thumb typing.</string>
     <string name="settings_split_gap">Centre gap</string>
+    <string name="settings_long_press_delay">Long-press delay</string>
+    <string name="settings_long_press_delay_hint">Applies to every key. Lower = quicker popups &amp; trackpad; higher = fewer accidental triggers.</string>
 
     <string name="theme_editor_title">Theme editor</string>
     <string name="theme_editor_name">Theme name</string>

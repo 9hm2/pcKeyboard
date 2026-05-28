@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import com.pckeyboard.ime.model.Key
@@ -17,16 +18,18 @@ import com.pckeyboard.ime.model.KeyboardLayout
 import com.pckeyboard.ime.model.ModifierState
 import com.pckeyboard.ime.settings.KeyboardPrefs
 import com.pckeyboard.ime.theme.KeyboardTheme
+import kotlin.math.abs
 
 /**
- * Renders a KeyboardLayout into a vertical stack of rows. Each row is a
- * horizontal LinearLayout of KeyViews weighted by Key.widthWeight, so the
- * whole keyboard automatically resizes on foldable / unfolded screens.
+ * Renders a KeyboardLayout. A vertical [rowsContainer] holds the rows of
+ * keys. On top of that we can mount a [TrackpadView] overlay for the
+ * Space-long-press trackpad gesture, or a [KeyPopupView] anchored above
+ * any other long-pressed key for alternate-character selection.
  */
 class KeyboardView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
-) : LinearLayout(context, attrs), KeyView.Listener {
+) : FrameLayout(context, attrs), KeyView.Listener {
 
     var listener: Listener? = null
     private var layoutData: KeyboardLayout? = null
@@ -36,12 +39,28 @@ class KeyboardView @JvmOverloads constructor(
     private val repeatRunnables = mutableMapOf<KeyView, Runnable>()
     private val prefs = KeyboardPrefs(context)
 
+    private val rowsContainer = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+    }
+
+    // Long-press popup state.
     private var popupWindow: PopupWindow? = null
     private var popupView: KeyPopupView? = null
-    private var popupAnchor: KeyView? = null
+
+    // Space-trackpad state.
+    private var trackpadView: TrackpadView? = null
+    private var trackpadActive: Boolean = false
+    private var trackpadArmed: Boolean = false
+    private var trackpadLastX: Float = 0f
+    private var trackpadLastY: Float = 0f
+    private var trackpadDxAccum: Float = 0f
+    private var trackpadDyAccum: Float = 0f
 
     init {
-        orientation = VERTICAL
+        addView(
+            rowsContainer,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        )
     }
 
     fun bind(layout: KeyboardLayout, theme: KeyboardTheme) {
@@ -69,8 +88,7 @@ class KeyboardView @JvmOverloads constructor(
         }
     }
 
-    /** Re-applies sizing prefs (height scale, padding, split). Call after the
-     *  user changes one of them, or after a configuration change. */
+    /** Re-applies sizing prefs (height scale, padding, split). */
     fun applySizingPrefs() {
         rebuild()
         requestLayout()
@@ -90,7 +108,7 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun rebuild() {
-        removeAllViews()
+        rowsContainer.removeAllViews()
         val layout = layoutData ?: return
         val theme = theme ?: return
         val spacing = dp(theme.keySpacingDp.toFloat())
@@ -98,15 +116,17 @@ class KeyboardView @JvmOverloads constructor(
         val widthDp = (resources.displayMetrics.widthPixels /
                 resources.displayMetrics.density).toInt()
         val side = (resources.displayMetrics.widthPixels * prefs.horizontalPadding).toInt()
-        setPadding(side, 0, side, 0)
+        rowsContainer.setPadding(side, 0, side, 0)
 
         val splitGap = if (prefs.splitEnabled && widthDp >= KeyboardPrefs.SPLIT_MIN_WIDTH_DP)
             prefs.splitGapWeight else 0f
 
         for (row in layout.rows) {
             val rowView = LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+                ).apply {
                     topMargin = spacing
                     bottomMargin = spacing
                     leftMargin = spacing
@@ -118,22 +138,26 @@ class KeyboardView @JvmOverloads constructor(
             for ((index, key) in row.withIndex()) {
                 val kv = KeyView(context, key, theme, modifiers).apply {
                     listener = this@KeyboardView
-                    layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, key.widthWeight / totalWeight)
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.MATCH_PARENT,
+                        key.widthWeight / totalWeight
+                    )
                 }
                 rowView.addView(kv)
                 if (index == splitIndex) {
                     val spacer = View(context).apply {
-                        layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, splitGap / totalWeight)
+                        layoutParams = LinearLayout.LayoutParams(
+                            0, LinearLayout.LayoutParams.MATCH_PARENT,
+                            splitGap / totalWeight
+                        )
                     }
                     rowView.addView(spacer)
                 }
             }
-            addView(rowView)
+            rowsContainer.addView(rowView)
         }
     }
 
-    /** Returns the index of the key after which a centre gap should be
-     *  inserted: roughly the half-weight split point of the row. */
     private fun findSplitIndex(row: List<Key>): Int {
         if (row.size < 4) return -1
         val total = row.sumOf { it.widthWeight.toDouble() }.toFloat()
@@ -161,12 +185,21 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onKeyLongPress(view: KeyView) {
         stopRepeat(view)
+        if (view.key.type == KeyType.SPACE) {
+            showTrackpad()
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            return
+        }
         val chars = view.key.popupChars ?: return
         showPopup(view, chars)
         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
     }
 
     override fun onKeyPopupMove(view: KeyView, rawX: Float, rawY: Float) {
+        if (trackpadActive) {
+            handleTrackpadMove(rawX, rawY)
+            return
+        }
         val popup = popupView ?: return
         val loc = IntArray(2)
         popup.getLocationOnScreen(loc)
@@ -174,6 +207,12 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     override fun onKeyPopupRelease(view: KeyView) {
+        if (trackpadActive) {
+            // Per spec: don't commit Space whether the user armed the trackpad
+            // or not — long-press alone is intent enough to suppress the tap.
+            endTrackpad()
+            return
+        }
         val selected = popupView?.let { p ->
             p.selectedIndex.takeIf { it in p.chars.indices }?.let { p.chars[it] }
         }
@@ -183,28 +222,28 @@ class KeyboardView @JvmOverloads constructor(
             listener?.onKey(charKey, modifiers)
             modifiers.consumeAfterChar()
             refresh()
-        } else {
-            // No selection — treat as normal tap on the anchor key.
-            handleKey(view.key)
         }
+        // else: silently dismiss — the user slid off and released, no commit.
     }
 
     override fun onKeyPopupCancel(view: KeyView) {
+        if (trackpadActive) {
+            endTrackpad()
+            return
+        }
         dismissPopup()
     }
+
+    // --- Alternate-char popup ---------------------------------------------
 
     private fun showPopup(anchor: KeyView, chars: String) {
         dismissPopup()
         val theme = theme ?: return
-        // Include the base char first so a quick release without sliding picks
-        // it back; then de-duplicate the rest.
         val base = anchor.key.label
         val all = (listOf(base) + chars.map { it.toString() }).distinct()
         val popup = KeyPopupView(context, all, theme)
-        // Pre-select the base character so a straight release commits it.
         popup.selectedIndex = 0
         popupView = popup
-        popupAnchor = anchor
 
         popup.measure(
             MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
@@ -221,8 +260,6 @@ class KeyboardView @JvmOverloads constructor(
 
         popupWindow = PopupWindow(popup, w, h, false).apply {
             isClippingEnabled = false
-            // We route touches through the anchor KeyView; this window is
-            // purely visual.
             isTouchable = false
             isFocusable = false
             showAtLocation(this@KeyboardView, Gravity.NO_GRAVITY, x, y)
@@ -233,11 +270,79 @@ class KeyboardView @JvmOverloads constructor(
         popupWindow?.dismiss()
         popupWindow = null
         popupView = null
-        popupAnchor = null
+    }
+
+    // --- Space trackpad ---------------------------------------------------
+
+    private fun showTrackpad() {
+        endTrackpad()
+        val theme = theme ?: return
+        val tp = TrackpadView(context, theme)
+        trackpadView = tp
+        trackpadActive = true
+        trackpadArmed = false
+        trackpadDxAccum = 0f
+        trackpadDyAccum = 0f
+        rowsContainer.visibility = INVISIBLE
+        addView(tp, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    private fun handleTrackpadMove(rawX: Float, rawY: Float) {
+        val tp = trackpadView ?: return
+        val loc = IntArray(2)
+        tp.getLocationOnScreen(loc)
+        val localX = rawX - loc[0]
+        val localY = rawY - loc[1]
+
+        if (!trackpadArmed) {
+            if (tp.isInsideIndicator(localX, localY)) {
+                trackpadArmed = true
+                tp.armed = true
+                trackpadLastX = rawX
+                trackpadLastY = rawY
+                tp.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            }
+            return
+        }
+
+        val stepPx = dp(10f).toFloat()
+        trackpadDxAccum += rawX - trackpadLastX
+        trackpadDyAccum += rawY - trackpadLastY
+        trackpadLastX = rawX
+        trackpadLastY = rawY
+
+        while (abs(trackpadDxAccum) >= stepPx) {
+            if (trackpadDxAccum > 0) {
+                sendCursor(KeyType.ARROW_RIGHT); trackpadDxAccum -= stepPx
+            } else {
+                sendCursor(KeyType.ARROW_LEFT);  trackpadDxAccum += stepPx
+            }
+        }
+        while (abs(trackpadDyAccum) >= stepPx) {
+            if (trackpadDyAccum > 0) {
+                sendCursor(KeyType.ARROW_DOWN); trackpadDyAccum -= stepPx
+            } else {
+                sendCursor(KeyType.ARROW_UP);   trackpadDyAccum += stepPx
+            }
+        }
+    }
+
+    private fun sendCursor(direction: KeyType) {
+        val key = Key(code = 0, label = "", type = direction)
+        listener?.onKey(key, modifiers)
+    }
+
+    private fun endTrackpad() {
+        trackpadView?.let { removeView(it) }
+        trackpadView = null
+        trackpadActive = false
+        trackpadArmed = false
+        rowsContainer.visibility = VISIBLE
     }
 
     override fun onDetachedFromWindow() {
         dismissPopup()
+        endTrackpad()
         super.onDetachedFromWindow()
     }
 
@@ -275,8 +380,8 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun forEachKeyView(action: (KeyView) -> Unit) {
-        for (i in 0 until childCount) {
-            val row = getChildAt(i) as? ViewGroup ?: continue
+        for (i in 0 until rowsContainer.childCount) {
+            val row = rowsContainer.getChildAt(i) as? ViewGroup ?: continue
             for (j in 0 until row.childCount) {
                 val kv = row.getChildAt(j) as? KeyView ?: continue
                 action(kv)
