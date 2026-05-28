@@ -12,7 +12,8 @@ object LayoutRegistry {
         val id: String,
         val displayName: String,
         val main: KeyboardLayout,
-        val symbols: KeyboardLayout
+        val symbols: KeyboardLayout,
+        val symbolsShift: KeyboardLayout
     )
 
     private val packs: MutableMap<String, LayoutPack> = mutableMapOf(
@@ -20,7 +21,8 @@ object LayoutRegistry {
             id = "en_US",
             displayName = "English (US)",
             main = EnglishLayout.main(),
-            symbols = EnglishLayout.symbols()
+            symbols = EnglishLayout.symbols(),
+            symbolsShift = EnglishLayout.symbolsShift()
         )
     )
 

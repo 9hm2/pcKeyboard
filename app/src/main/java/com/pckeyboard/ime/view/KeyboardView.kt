@@ -132,14 +132,22 @@ class KeyboardView @JvmOverloads constructor(
                     rightMargin = spacing
                 }
             }
-            val splitIndex = if (splitGap > 0f) findSplitIndex(row) else -1
+            val spaceIndex = row.indexOfFirst { it.type == KeyType.SPACE }
+            val isSpaceRow = splitGap > 0f && spaceIndex >= 0
+            // In rows that contain Space, don't carve a gap into the row —
+            // instead stretch the Space key by `splitGap` so it bridges the
+            // visual split and can be hit by either thumb. Other rows get the
+            // normal centre spacer.
+            val splitIndex = if (splitGap > 0f && !isSpaceRow) findSplitIndex(row) else -1
             val totalWeight = row.sumOf { it.widthWeight.toDouble() }.toFloat() + splitGap
             for ((index, key) in row.withIndex()) {
+                val effectiveWeight = if (isSpaceRow && index == spaceIndex)
+                    key.widthWeight + splitGap else key.widthWeight
                 val kv = KeyView(context, key, theme, modifiers).apply {
                     listener = this@KeyboardView
                     layoutParams = LinearLayout.LayoutParams(
                         0, LinearLayout.LayoutParams.MATCH_PARENT,
-                        key.widthWeight / totalWeight
+                        effectiveWeight / totalWeight
                     )
                 }
                 rowView.addView(kv)

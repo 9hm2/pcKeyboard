@@ -63,7 +63,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val view = keyboardView ?: return
         val pack = LayoutRegistry.get(currentLayoutId)
         val base: KeyboardLayout = when (currentMode) {
-            LayoutMode.SYMBOLS, LayoutMode.SYMBOLS_SHIFT -> pack.symbols
+            LayoutMode.SYMBOLS -> pack.symbols
+            LayoutMode.SYMBOLS_SHIFT -> pack.symbolsShift
             else -> pack.main
         }
         val widthDp = (resources.displayMetrics.widthPixels / resources.displayMetrics.density).toInt()

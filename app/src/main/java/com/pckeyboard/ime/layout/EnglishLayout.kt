@@ -132,29 +132,57 @@ object EnglishLayout {
         rows = listOf(
             listOf(
                 Key.char("1"), Key.char("2"), Key.char("3"), Key.char("4"), Key.char("5"),
-                Key.char("6"), Key.char("7"), Key.char("8"), Key.char("9"), Key.char("0"),
-                Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.5f, repeatable = true)
+                Key.char("6"), Key.char("7"), Key.char("8"), Key.char("9"), Key.char("0")
             ),
             listOf(
                 Key.char("@"), Key.char("#"), Key.char("$"), Key.char("_"), Key.char("&"),
-                Key.char("-"), Key.char("+"), Key.char("("), Key.char(")"), Key.char("/"),
-                Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
+                Key.char("-"), Key.char("+"), Key.char("("), Key.char(")"), Key.char("/")
             ),
             listOf(
                 Key.fn("=\\<", KeyType.LAYOUT_SWITCH, weight = 1.5f),
                 Key.char("*"), Key.char("\""), Key.char("'"), Key.char(":"),
                 Key.char(";"), Key.char("!"), Key.char("?"),
-                Key.char(","), Key.char("."),
-                Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.5f)
+                Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.5f, repeatable = true)
             ),
             listOf(
                 Key.fn("ABC",   KeyType.SYMBOL_SWITCH, weight = 1.5f),
-                Key.fn(",",     KeyType.CHAR, weight = 1f),
+                Key.char(","),
                 Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 5f),
-                Key.fn(".",     KeyType.CHAR, weight = 1f),
+                Key.char("."),
                 Key.fn("⏎",    KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
             )
         ),
         mode = LayoutMode.SYMBOLS
+    )
+
+    /** Second symbols page — reached via the "=\<" key on the first page,
+     *  and exited via "123" back to the regular symbols layout. */
+    fun symbolsShift(): KeyboardLayout = KeyboardLayout(
+        id = "en_us_sym_shift",
+        displayName = "Symbols 2",
+        rows = listOf(
+            listOf(
+                Key.char("~"), Key.char("`"), Key.char("|"), Key.char("•"), Key.char("°"),
+                Key.char("¶"), Key.char("§"), Key.char("©"), Key.char("®"), Key.char("™")
+            ),
+            listOf(
+                Key.char("€"), Key.char("£"), Key.char("¥"), Key.char("¢"), Key.char("^"),
+                Key.char("="), Key.char("÷"), Key.char("×"), Key.char("±"), Key.char("¬")
+            ),
+            listOf(
+                Key.fn("123", KeyType.LAYOUT_SWITCH, weight = 1.5f),
+                Key.char("<"), Key.char(">"), Key.char("{"), Key.char("}"),
+                Key.char("["), Key.char("]"), Key.char("\\"),
+                Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.5f, repeatable = true)
+            ),
+            listOf(
+                Key.fn("ABC",   KeyType.SYMBOL_SWITCH, weight = 1.5f),
+                Key.char("?"),
+                Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 5f),
+                Key.char("!"),
+                Key.fn("⏎",    KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
+            )
+        ),
+        mode = LayoutMode.SYMBOLS_SHIFT
     )
 }
