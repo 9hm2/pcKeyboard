@@ -16,6 +16,16 @@ android {
         resourceConfigurations += listOf("en")
     }
 
+    // Release keystore is NOT committed to the repo — provide it locally
+    // (default path: app/release.keystore) or point at it through the
+    // PCK_KEYSTORE_FILE env var. Password / alias / key-password also come
+    // from env vars so nothing sensitive is checked in.
+    val releaseKeystoreFile = System.getenv("PCK_KEYSTORE_FILE")?.let { file(it) }
+        ?: file("release.keystore")
+    val hasReleaseKeystore = releaseKeystoreFile.exists() &&
+        System.getenv("PCK_KEYSTORE_PASSWORD") != null &&
+        System.getenv("PCK_KEY_PASSWORD") != null
+
     signingConfigs {
         // Stable debug keystore committed to the repo so debug APKs built
         // anywhere (local / CI / another machine) share the same signature.
@@ -25,18 +35,13 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
-        create("release") {
-            // Bundled keystore — override via env vars / CI secrets if you need
-            // a different signing identity.
-            val keystoreFile = file(
-                System.getenv("PCK_KEYSTORE_FILE") ?: "release.keystore"
-            )
-            storeFile = keystoreFile
-            storePassword = System.getenv("PCK_KEYSTORE_PASSWORD")
-                ?: "pcKeyboardRelease2026"
-            keyAlias = System.getenv("PCK_KEY_ALIAS") ?: "pckeyboard"
-            keyPassword = System.getenv("PCK_KEY_PASSWORD")
-                ?: "pcKeyboardRelease2026"
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = releaseKeystoreFile
+                storePassword = System.getenv("PCK_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("PCK_KEY_ALIAS") ?: "pckeyboard"
+                keyPassword = System.getenv("PCK_KEY_PASSWORD")
+            }
         }
     }
 
@@ -44,7 +49,11 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            // If hasReleaseKeystore is false the release APK is unsigned —
+            // assembleRelease still builds; signing is the caller's job.
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

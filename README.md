@@ -102,7 +102,7 @@ with proper IME integration so apps see real `Ctrl+C`, `Alt+Tab`, etc.
 
 ```bash
 ./gradlew :app:assembleDebug    # debug APK, signed with bundled debug.keystore
-./gradlew :app:assembleRelease  # release APK, signed with bundled release.keystore
+./gradlew :app:assembleRelease  # release APK; signed only if you provide a keystore
 ```
 
 CI is **manual-only** (`workflow_dispatch`) — see
@@ -110,16 +110,32 @@ CI is **manual-only** (`workflow_dispatch`) — see
 generates the Gradle wrapper if missing, runs lint, and uploads both
 debug and release APKs as artifacts.
 
-Both keystores are committed under `app/` so every build machine — local
-or CI — signs with the same identity:
+### Signing
 
-| Variant | Keystore | Alias | Password |
-|---|---|---|---|
-| debug | `app/debug.keystore` | `androiddebugkey` | `android` |
-| release | `app/release.keystore` | `pckeyboard` | `pcKeyboardRelease2026` |
+The **debug keystore** (`app/debug.keystore`, alias `androiddebugkey`,
+password `android` — the well-known Android default) is committed so
+every build machine signs debug APKs identically. You can install a
+debug APK from CI on top of a locally built one without uninstalling.
 
-Override the release identity via env vars `PCK_KEYSTORE_FILE`,
-`PCK_KEYSTORE_PASSWORD`, `PCK_KEY_ALIAS`, `PCK_KEY_PASSWORD`.
+The **release keystore is private** and intentionally not in the repo.
+Provide it locally as `app/release.keystore` and set these env vars
+before running `assembleRelease`:
+
+| Env var | Purpose |
+|---|---|
+| `PCK_KEYSTORE_FILE` | path to the keystore (default `app/release.keystore`) |
+| `PCK_KEYSTORE_PASSWORD` | store password |
+| `PCK_KEY_ALIAS` | key alias (default `pckeyboard`) |
+| `PCK_KEY_PASSWORD` | key password |
+
+If any of those are missing, `assembleRelease` still builds — it just
+produces `app-release-unsigned.apk` that you can sign later with
+`apksigner`. To sign in CI, add the keystore as a secret and decode it
+in a workflow step before `assembleRelease` runs.
+
+## License
+
+GPL v3 — see [LICENSE](LICENSE).
 
 ## Install & enable
 
