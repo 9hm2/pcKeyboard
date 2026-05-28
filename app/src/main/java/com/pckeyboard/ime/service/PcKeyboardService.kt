@@ -108,6 +108,15 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         bindCurrentLayout()
     }
 
+    /**
+     * Never enter the IME's fullscreen "extract" mode in landscape. The
+     * default behaviour blanks the whole app with a single-line text editor
+     * above the keyboard, so the user only sees the input field — chat
+     * history, list rows, etc. all disappear. Returning false keeps the
+     * focused app visible above our keyboard exactly like portrait does.
+     */
+    override fun onEvaluateFullscreenMode(): Boolean = false
+
     private fun bindCurrentLayout() {
         val view = keyboardView ?: return
         view.currentLanguageId = currentLayoutId
