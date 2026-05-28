@@ -74,7 +74,12 @@ class KeyView(
         }
 
         val isShifted = modifiers.isShiftActive()
+        val isAltActive = modifiers.isAltActive()
+        val altChar = key.popupChars?.takeIf {
+            isAltActive && (key.type == KeyType.LETTER || key.type == KeyType.CHAR)
+        }?.substring(0, 1)
         val mainText = when {
+            altChar != null -> if (isShifted) altChar.uppercase() else altChar
             key.type == KeyType.LETTER && isShifted -> key.label.uppercase()
             key.type == KeyType.LETTER -> key.label
             key.type == KeyType.CHAR && isShifted && key.shiftLabel != null -> key.shiftLabel
@@ -170,7 +175,8 @@ class KeyView(
     private val prefs by lazy { KeyboardPrefs(context) }
 
     private fun canLongPress(): Boolean =
-        key.popupChars != null || key.type == KeyType.SPACE
+        key.popupChars != null || key.type == KeyType.SPACE ||
+            key.type == KeyType.LANGUAGE_SWITCH
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {

@@ -1,5 +1,7 @@
 package com.pckeyboard.ime.service
 
+import android.content.ClipboardManager
+import android.content.Intent
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.view.KeyEvent
@@ -7,6 +9,8 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputMethodSubtype
+import com.pckeyboard.ime.settings.SettingsActivity
+import com.pckeyboard.ime.view.MenuAction
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
 import com.pckeyboard.ime.model.Key
@@ -106,6 +110,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     private fun bindCurrentLayout() {
         val view = keyboardView ?: return
+        view.currentLanguageId = currentLayoutId
         val pack = LayoutRegistry.get(currentLayoutId)
         val base: KeyboardLayout = when (currentMode) {
             LayoutMode.SYMBOLS -> pack.symbols
@@ -114,8 +119,30 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         }
         val widthDp = (resources.displayMetrics.widthPixels / resources.displayMetrics.density).toInt()
         val variant = LayoutSelector.pick(widthDp)
-        val finalLayout = LayoutSelector.apply(base, variant)
+        val finalLayout = withLanguageLabel(
+            LayoutSelector.apply(base, variant),
+            languageLabelFor(currentLayoutId)
+        )
         view.bind(finalLayout, themeRepo.getSelectedTheme())
+    }
+
+    /** Rewrites the LANGUAGE_SWITCH key's label so the globe shows the
+     *  current locale code (EN / HU / DE / ES). */
+    private fun withLanguageLabel(layout: KeyboardLayout, label: String): KeyboardLayout {
+        val newRows = layout.rows.map { row ->
+            row.map { key ->
+                if (key.type == KeyType.LANGUAGE_SWITCH) key.copy(label = label) else key
+            }
+        }
+        return layout.copy(rows = newRows)
+    }
+
+    private fun languageLabelFor(id: String): String = when (id) {
+        "en_US" -> "EN"
+        "hu_HU" -> "HU"
+        "de_DE" -> "DE"
+        "es_ES" -> "ES"
+        else -> "•"
     }
 
     override fun onKey(key: Key, modifiers: ModifierState) {
@@ -148,22 +175,35 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             KeyType.HIDE -> requestHideSelf(0)
             KeyType.LETTER, KeyType.CHAR -> {
                 val c = pickChar(key, modifiers)
-                if (modifiers.shouldSendAsKeyEvent()) {
-                    val code = androidKeyCodeForChar(c)
-                    if (code != 0) sendKey(code, modifiers) else commitChar(c)
-                } else {
-                    commitChar(c)
+                val altAsAltGr = modifiers.isAltActive() && key.popupChars != null
+                when {
+                    altAsAltGr -> commitChar(c)        // Alt produces the popup-alt char
+                    modifiers.shouldSendAsKeyEvent() -> {
+                        val code = androidKeyCodeForChar(c)
+                        if (code != 0) sendKey(code, modifiers) else commitChar(c)
+                    }
+                    else -> commitChar(c)
                 }
             }
             else -> {}
         }
     }
 
-    private fun pickChar(key: Key, modifiers: ModifierState): Char = when {
-        key.type == KeyType.LETTER && modifiers.isShiftActive() -> key.label.uppercase()[0]
-        key.type == KeyType.LETTER -> key.label[0]
-        key.type == KeyType.CHAR && modifiers.isShiftActive() && key.shiftLabel != null -> key.shiftLabel[0]
-        else -> key.label[0]
+    private fun pickChar(key: Key, modifiers: ModifierState): Char {
+        // Alt acts as AltGr on char / letter keys with popup alternates: tap
+        // with Alt held commits the first popup char (e.g. AltGr+E = € when
+        // popup is "€£¥..."). Shift on top capitalises that alt char.
+        if (modifiers.isAltActive() && key.popupChars != null &&
+            (key.type == KeyType.LETTER || key.type == KeyType.CHAR)) {
+            val ch = key.popupChars[0]
+            return if (modifiers.isShiftActive()) ch.uppercaseChar() else ch
+        }
+        return when {
+            key.type == KeyType.LETTER && modifiers.isShiftActive() -> key.label.uppercase()[0]
+            key.type == KeyType.LETTER -> key.label[0]
+            key.type == KeyType.CHAR && modifiers.isShiftActive() && key.shiftLabel != null -> key.shiftLabel[0]
+            else -> key.label[0]
+        }
     }
 
     private fun commitChar(c: Char) {
@@ -191,6 +231,29 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     /** Trackpad cursor motion — no modifier semantics. */
     override fun onCursorMove(dx: Int, dy: Int) {
         moveCursor(dx, dy, null)
+    }
+
+    override fun onMenuAction(action: MenuAction) {
+        when (action) {
+            is MenuAction.SwitchLanguage -> {
+                currentLayoutId = action.packId
+                kbPrefs.currentLanguage = action.packId
+                currentMode = LayoutMode.MAIN
+                bindCurrentLayout()
+            }
+            MenuAction.PasteClipboard -> {
+                val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager
+                val clip = cm?.primaryClip ?: return
+                if (clip.itemCount == 0) return
+                val text = clip.getItemAt(0)?.coerceToText(this)?.toString() ?: return
+                if (text.isNotEmpty()) currentInputConnection?.commitText(text, 1)
+            }
+            MenuAction.OpenSettings -> {
+                val intent = Intent(this, SettingsActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+            }
+        }
     }
 
     /**

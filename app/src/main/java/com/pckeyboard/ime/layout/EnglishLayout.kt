@@ -67,6 +67,8 @@ object EnglishLayout {
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
     )
 
+    // 14-weight row so the ▲ at column 89.3 % lines up with ▼ on the row
+    // below. ANSI has no LSGT, so the left Shift takes its slot at weight 2.0.
     private fun bottomLetters(): List<Key> = listOf(
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 2.0f),
         Key.letter("z", popup = "žźż"),
@@ -80,7 +82,7 @@ object EnglishLayout {
         Key.char(".", ">", popup = "…»›"),
         Key.char("/", "?", popup = "¿÷"),
         Key.fn("▲", KeyType.ARROW_UP, KeyEvent.KEYCODE_DPAD_UP, repeatable = true),
-        Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.5f)
+        Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f)
     )
 
     fun main(): KeyboardLayout = LayoutBlocks.mainLayout(

@@ -60,17 +60,18 @@ internal object LayoutBlocks {
     )
 
     /**
-     * Bottom-bottom row. Esc on the left, the inverted-T arrow cluster
-     * (left / down / right) on the right; the matching up-arrow sits at the
-     * end of the previous row, just like a desktop arrow cluster.
+     * Bottom-bottom row. Total weight = 14 so the columns line up across
+     * the whole keyboard; the centre of ▼ sits at 89.3 % of the row width,
+     * which is exactly the column of ▲ at the right end of the bottom
+     * letter row, forming a real inverted-T arrow cluster.
      */
     fun controlRow(): List<Key> = listOf(
         Key.fn("Esc",   KeyType.ESC, KeyEvent.KEYCODE_ESCAPE, weight = 1.5f),
         Key.fn("🌐",   KeyType.LANGUAGE_SWITCH, weight = 1.0f),
         Key.fn("Alt",   KeyType.ALT,  sticky = true, weight = 1.0f),
         Key.fn("Win",   KeyType.META, sticky = true, weight = 1.0f),
-        Key.fn("123",   KeyType.SYMBOL_SWITCH, weight = 1.1f),
-        Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 5.4f),
+        Key.fn("123",   KeyType.SYMBOL_SWITCH, weight = 1.5f),
+        Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 5.0f),
         Key.fn("◀",    KeyType.ARROW_LEFT,  KeyEvent.KEYCODE_DPAD_LEFT,  repeatable = true),
         Key.fn("▼",    KeyType.ARROW_DOWN,  KeyEvent.KEYCODE_DPAD_DOWN,  repeatable = true),
         Key.fn("▶",    KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true)

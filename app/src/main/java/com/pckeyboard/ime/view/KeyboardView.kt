@@ -46,6 +46,9 @@ class KeyboardView @JvmOverloads constructor(
     // an IME's input window: the system layer often puts it behind the IME).
     private var popupView: KeyPopupView? = null
 
+    // Globe long-press: vertical action menu, same touch routing pattern.
+    private var actionMenuView: ActionMenuView? = null
+
     // Space-trackpad state.
     private var trackpadView: TrackpadView? = null
     private var trackpadActive: Boolean = false
@@ -192,19 +195,32 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onKeyLongPress(view: KeyView) {
         stopRepeat(view)
-        if (view.key.type == KeyType.SPACE) {
-            showTrackpad()
-            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            return
+        when (view.key.type) {
+            KeyType.SPACE -> {
+                showTrackpad()
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
+            KeyType.LANGUAGE_SWITCH -> {
+                showActionMenu(view)
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
+            else -> {
+                val chars = view.key.popupChars ?: return
+                showPopup(view, chars)
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
         }
-        val chars = view.key.popupChars ?: return
-        showPopup(view, chars)
-        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
     }
 
     override fun onKeyPopupMove(view: KeyView, rawX: Float, rawY: Float) {
         if (trackpadActive) {
             handleTrackpadMove(rawX, rawY)
+            return
+        }
+        actionMenuView?.let { menu ->
+            val loc = IntArray(2)
+            menu.getLocationOnScreen(loc)
+            menu.selectedIndex = menu.findIndexForY(rawY - loc[1])
             return
         }
         val popup = popupView ?: return
@@ -218,6 +234,14 @@ class KeyboardView @JvmOverloads constructor(
             // Per spec: don't commit Space whether the user armed the trackpad
             // or not — long-press alone is intent enough to suppress the tap.
             endTrackpad()
+            return
+        }
+        actionMenuView?.let { menu ->
+            val selectedAction = menu.selectedIndex
+                .takeIf { it in menu.items.indices }
+                ?.let { menu.items[it].action }
+            dismissActionMenu()
+            if (selectedAction != null) listener?.onMenuAction(selectedAction)
             return
         }
         val selected = popupView?.let { p ->
@@ -234,11 +258,67 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     override fun onKeyPopupCancel(view: KeyView) {
-        if (trackpadActive) {
-            endTrackpad()
-            return
-        }
+        if (trackpadActive) { endTrackpad(); return }
+        if (actionMenuView != null) { dismissActionMenu(); return }
         dismissPopup()
+    }
+
+    // --- Globe action menu ------------------------------------------------
+
+    var currentLanguageId: String = "en_US"
+
+    private fun showActionMenu(anchor: KeyView) {
+        dismissActionMenu()
+        val theme = theme ?: return
+        val items = buildList {
+            add(MenuItem("🌐", "English  (EN)", MenuAction.SwitchLanguage("en_US"),
+                isCurrent = currentLanguageId == "en_US"))
+            add(MenuItem("🌐", "Magyar  (HU)", MenuAction.SwitchLanguage("hu_HU"),
+                isCurrent = currentLanguageId == "hu_HU"))
+            add(MenuItem("🌐", "Deutsch  (DE)", MenuAction.SwitchLanguage("de_DE"),
+                isCurrent = currentLanguageId == "de_DE"))
+            add(MenuItem("🌐", "Español  (ES)", MenuAction.SwitchLanguage("es_ES"),
+                isCurrent = currentLanguageId == "es_ES"))
+            add(MenuItem("📋", "Paste clipboard",  MenuAction.PasteClipboard))
+            add(MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings))
+        }
+        val menu = ActionMenuView(context, items, theme).apply {
+            selectedIndex = items.indexOfFirst { it.isCurrent }.coerceAtLeast(0)
+            elevation = dp(8f).toFloat()
+        }
+        actionMenuView = menu
+
+        menu.measure(
+            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+        )
+        val w = menu.measuredWidth
+        val h = menu.measuredHeight
+
+        val anchorLoc = IntArray(2)
+        val selfLoc = IntArray(2)
+        anchor.getLocationInWindow(anchorLoc)
+        getLocationInWindow(selfLoc)
+        val anchorX = anchorLoc[0] - selfLoc[0]
+        val anchorY = anchorLoc[1] - selfLoc[1]
+        val centerX = anchorX + anchor.width / 2
+        var x = centerX - w / 2
+        if (x < 0) x = 0
+        if (x + w > width) x = (width - w).coerceAtLeast(0)
+        // Open upwards so the bottom of the menu sits just above the globe.
+        var y = anchorY - h - dp(4f)
+        if (y < 0) y = 0
+
+        val lp = LayoutParams(w, h).apply {
+            leftMargin = x
+            topMargin = y
+        }
+        addView(menu, lp)
+    }
+
+    private fun dismissActionMenu() {
+        actionMenuView?.let { removeView(it) }
+        actionMenuView = null
     }
 
     // --- Alternate-char popup ---------------------------------------------
@@ -385,6 +465,7 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         dismissPopup()
+        dismissActionMenu()
         endTrackpad()
         super.onDetachedFromWindow()
     }
@@ -439,5 +520,7 @@ class KeyboardView @JvmOverloads constructor(
         fun onKey(key: Key, modifiers: ModifierState)
         /** Trackpad-driven cursor motion. dx / dy are character / line steps. */
         fun onCursorMove(dx: Int, dy: Int)
+        /** Globe long-press action menu selection. */
+        fun onMenuAction(action: MenuAction)
     }
 }

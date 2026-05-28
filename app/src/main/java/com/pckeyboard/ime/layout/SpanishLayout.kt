@@ -66,7 +66,7 @@ object SpanishLayout {
     )
 
     private fun bottomLetters(): List<Key> = listOf(
-        Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.5f),
+        Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f),
         Key.char("<", ">", popup = "|≤≥«»"),
         Key.letter("z"),
         Key.letter("x"),
@@ -79,7 +79,7 @@ object SpanishLayout {
         Key.char(".", ":", popup = "…»›"),
         Key.char("-", "_", popup = "–—"),
         Key.fn("▲", KeyType.ARROW_UP, KeyEvent.KEYCODE_DPAD_UP, repeatable = true),
-        Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.5f)
+        Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f)
     )
 
     fun main(): KeyboardLayout = LayoutBlocks.mainLayout(
