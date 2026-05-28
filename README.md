@@ -59,10 +59,26 @@ with proper IME integration so apps see real `Ctrl+C`, `Alt+Tab`, etc.
 - Once armed (haptic confirmation), every 10 dp of finger movement maps
   to a one-step cursor move; release at any time ends trackpad mode
   without inserting Space.
-- Cursor motion uses `InputConnection.setSelection` rather than DPAD
-  key events, so the cursor moves through text without ever moving focus
-  to a sibling view (Send button, list item, etc.) — no risk of the IME
-  being torn down mid-gesture.
+
+### Cursor keys & Enter
+
+Arrow keys, Home / End, Page Up / Page Down, and Enter all go through
+`InputConnection` editor commands rather than DPAD / Enter `KeyEvent`s.
+That keeps the gesture inside the focused editor — on foldables and in
+free-form / multi-window mode the system window manager would otherwise
+steal a DPAD event to select the floating-window grab handle, jump
+focus to a sibling Send button, etc.
+
+- **← / →** — move caret one character; with **Ctrl** jump by word
+  boundary; with **Shift** extend selection instead of moving.
+- **↑ / ↓** — move caret one line, preserving column.
+- **Home / End** — start / end of current line (extends selection
+  under Shift).
+- **Page Up / Page Down** — ±10 lines.
+- **Enter** — runs the editor's declared `IME_ACTION_*` (Send / Done /
+  Search / Next / ...) when one is set; otherwise commits `\n`.
+  Holding any modifier (Shift+Enter, Ctrl+Enter, ...) always commits
+  `\n` — the universal "newline in a chat field" shortcut.
 
 ### Sizing & layout settings
 
@@ -167,8 +183,13 @@ view/          KeyboardView   — FrameLayout that hosts the rows + optional
 
 service/       PcKeyboardService — InputMethodService entry-point. Converts
                                     Key + ModifierState to InputConnection
-                                    calls (commitText / sendKeyEvent /
-                                    setSelection for trackpad cursor).
+                                    calls: commitText for characters,
+                                    setSelection for cursor / arrow keys
+                                    (with Ctrl word-jump and Shift selection
+                                    extension), performEditorAction for
+                                    Enter, sendKeyEvent only for keys whose
+                                    modifier semantics actually need it
+                                    (Backspace, Delete, Tab, Esc, F-row).
 
 settings/      SetupActivity      — onboarding (enable + switch IME).
                SettingsActivity   — size / split / long-press / theme picker.
