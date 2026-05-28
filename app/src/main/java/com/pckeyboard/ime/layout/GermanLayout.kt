@@ -12,6 +12,10 @@ import com.pckeyboard.ime.model.KeyboardLayout
  */
 object GermanLayout {
 
+    // Mirror the DE ISO 105-key layout: ü is the only umlaut on the top
+    // row; ö and ä both sit on the home row to the right of L. ß lives on
+    // the number row on a physical DE keyboard, so on mobile we expose it
+    // as a long-press alternate on s.
     private fun topLetters(): List<Key> = listOf(
         Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB, weight = 1.4f),
         Key.letter("q"),
@@ -25,7 +29,6 @@ object GermanLayout {
         Key.letter("o", popup = "öòóôõøœ"),
         Key.letter("p"),
         Key.char("ü", "Ü"),
-        Key.char("ö", "Ö"),
         Key.char("\\", "|", weight = 1.2f)
     )
 
@@ -40,8 +43,8 @@ object GermanLayout {
         Key.letter("j"),
         Key.letter("k"),
         Key.letter("l"),
+        Key.char("ö", "Ö"),
         Key.char("ä", "Ä"),
-        Key.char("ß", "ẞ"),
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 2.0f)
     )
 

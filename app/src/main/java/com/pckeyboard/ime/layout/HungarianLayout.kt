@@ -28,6 +28,8 @@ object HungarianLayout {
         Key.char("\\", "|", weight = 1.2f)
     )
 
+    // Mirror the HU ISO 105-key layout: home row ends with é, á, ű before
+    // Enter just like a physical Hungarian keyboard.
     private fun homeLetters(): List<Key> = listOf(
         Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.6f),
         Key.letter("a", popup = "áàâäãåæ"),
@@ -41,6 +43,7 @@ object HungarianLayout {
         Key.letter("l"),
         Key.char("é", "É"),
         Key.char("á", "Á"),
+        Key.char("ű", "Ű"),
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 2.0f)
     )
 

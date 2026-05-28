@@ -28,6 +28,10 @@ object SpanishLayout {
         Key.char("\\", "|", weight = 1.2f)
     )
 
+    // Mirror the ES ISO 105-key layout: home row ends with ñ, ´, ç. The
+    // physical ´ is a dead key on PC — we commit it literally on tap
+    // (with `¨ ` ' ´` available as long-press alternates), since long-press
+    // on the vowels already gives accented letters directly.
     private fun homeLetters(): List<Key> = listOf(
         Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.6f),
         Key.letter("a", popup = "áàâäãå"),
@@ -40,7 +44,8 @@ object SpanishLayout {
         Key.letter("k"),
         Key.letter("l"),
         Key.char("ñ", "Ñ"),
-        Key.char("'", "\"", popup = "‘’"),
+        Key.char("´", "¨", popup = "`'¨"),
+        Key.char("ç", "Ç"),
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 2.0f)
     )
 
