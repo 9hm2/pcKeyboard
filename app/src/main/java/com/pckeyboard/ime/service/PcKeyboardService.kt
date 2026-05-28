@@ -46,10 +46,11 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        // Refresh theme on each session — user may have changed it.
+        // Refresh theme + sizing prefs on each session — user may have changed
+        // them since the IME was last shown.
         keyboardView?.updateTheme(themeRepo.getSelectedTheme())
-        // Re-pick variant in case the device fold state changed.
         bindCurrentLayout()
+        keyboardView?.applySizingPrefs()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

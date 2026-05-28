@@ -14,6 +14,14 @@
 
     <string name="settings_title">Settings</string>
     <string name="settings_new_theme">New theme</string>
+    <string name="settings_section_size">Size &amp; layout</string>
+    <string name="settings_section_themes">Themes</string>
+    <string name="settings_height">Height</string>
+    <string name="settings_width">Width margin (each side)</string>
+    <string name="settings_width_hint">Narrows the keyboard symmetrically from both sides — useful on tablets and unfolded foldables.</string>
+    <string name="settings_split">Split keyboard</string>
+    <string name="settings_split_hint">Adds a centre gap on wide screens for two-thumb typing.</string>
+    <string name="settings_split_gap">Centre gap</string>
 
     <string name="theme_editor_title">Theme editor</string>
     <string name="theme_editor_name">Theme name</string>

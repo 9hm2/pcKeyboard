@@ -1,7 +1,6 @@
 package com.pckeyboard.ime.view
 
 import android.content.Context
-import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
@@ -14,6 +13,7 @@ import com.pckeyboard.ime.model.Key
 import com.pckeyboard.ime.model.KeyType
 import com.pckeyboard.ime.model.KeyboardLayout
 import com.pckeyboard.ime.model.ModifierState
+import com.pckeyboard.ime.settings.KeyboardPrefs
 import com.pckeyboard.ime.theme.KeyboardTheme
 
 /**
@@ -32,6 +32,7 @@ class KeyboardView @JvmOverloads constructor(
     private val modifiers = ModifierState()
     private val handler = Handler(Looper.getMainLooper())
     private val repeatRunnables = mutableMapOf<KeyView, Runnable>()
+    private val prefs = KeyboardPrefs(context)
 
     init {
         orientation = VERTICAL
@@ -48,12 +49,11 @@ class KeyboardView @JvmOverloads constructor(
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val mode = MeasureSpec.getMode(heightMeasureSpec)
         if (mode == MeasureSpec.UNSPECIFIED || mode == MeasureSpec.AT_MOST) {
-            // Pick a sensible default height: per-row size scaled to screen width.
             val rows = layoutData?.rows?.size ?: 5
             val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
-            // Foldable / tablet: smaller per-row height because we have more rows.
             val perRowDp = if (widthDp >= 600f) 46f else 52f
-            val targetHeight = dp(perRowDp) * rows + dp((theme?.keySpacingDp ?: 3).toFloat()) * (rows + 1)
+            val base = dp(perRowDp) * rows + dp((theme?.keySpacingDp ?: 3).toFloat()) * (rows + 1)
+            val targetHeight = (base * prefs.heightScale).toInt()
             val resolved = if (mode == MeasureSpec.AT_MOST) {
                 minOf(MeasureSpec.getSize(heightMeasureSpec), targetHeight)
             } else targetHeight
@@ -61,6 +61,13 @@ class KeyboardView @JvmOverloads constructor(
         } else {
             super.onMeasure(widthMeasureSpec, heightMeasureSpec)
         }
+    }
+
+    /** Re-applies sizing prefs (height scale, padding, split). Call after the
+     *  user changes one of them, or after a configuration change. */
+    fun applySizingPrefs() {
+        rebuild()
+        requestLayout()
     }
 
     fun updateTheme(theme: KeyboardTheme) {
@@ -81,6 +88,15 @@ class KeyboardView @JvmOverloads constructor(
         val layout = layoutData ?: return
         val theme = theme ?: return
         val spacing = dp(theme.keySpacingDp.toFloat())
+
+        val widthDp = (resources.displayMetrics.widthPixels /
+                resources.displayMetrics.density).toInt()
+        val side = (resources.displayMetrics.widthPixels * prefs.horizontalPadding).toInt()
+        setPadding(side, 0, side, 0)
+
+        val splitGap = if (prefs.splitEnabled && widthDp >= KeyboardPrefs.SPLIT_MIN_WIDTH_DP)
+            prefs.splitGapWeight else 0f
+
         for (row in layout.rows) {
             val rowView = LinearLayout(context).apply {
                 orientation = HORIZONTAL
@@ -91,16 +107,36 @@ class KeyboardView @JvmOverloads constructor(
                     rightMargin = spacing
                 }
             }
-            val totalWeight = row.sumOf { it.widthWeight.toDouble() }.toFloat()
-            for (key in row) {
+            val splitIndex = if (splitGap > 0f) findSplitIndex(row) else -1
+            val totalWeight = row.sumOf { it.widthWeight.toDouble() }.toFloat() + splitGap
+            for ((index, key) in row.withIndex()) {
                 val kv = KeyView(context, key, theme, modifiers).apply {
                     listener = this@KeyboardView
                     layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, key.widthWeight / totalWeight)
                 }
                 rowView.addView(kv)
+                if (index == splitIndex) {
+                    val spacer = View(context).apply {
+                        layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, splitGap / totalWeight)
+                    }
+                    rowView.addView(spacer)
+                }
             }
             addView(rowView)
         }
+    }
+
+    /** Returns the index of the key after which a centre gap should be
+     *  inserted: roughly the half-weight split point of the row. */
+    private fun findSplitIndex(row: List<Key>): Int {
+        if (row.size < 4) return -1
+        val total = row.sumOf { it.widthWeight.toDouble() }.toFloat()
+        var acc = 0f
+        for ((i, k) in row.withIndex()) {
+            acc += k.widthWeight
+            if (acc >= total / 2f) return i
+        }
+        return row.size / 2
     }
 
     override fun onKeyDown(view: KeyView) {
