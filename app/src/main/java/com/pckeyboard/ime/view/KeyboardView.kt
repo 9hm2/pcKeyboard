@@ -5,13 +5,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
 import android.util.TypedValue
-import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.PopupWindow
 import com.pckeyboard.ime.model.Key
 import com.pckeyboard.ime.model.KeyType
 import com.pckeyboard.ime.model.KeyboardLayout
@@ -43,8 +41,9 @@ class KeyboardView @JvmOverloads constructor(
         orientation = LinearLayout.VERTICAL
     }
 
-    // Long-press popup state.
-    private var popupWindow: PopupWindow? = null
+    // Long-press popup state — rendered as a child of this FrameLayout so it
+    // is always visible on top of the keys (a PopupWindow is unreliable in
+    // an IME's input window: the system layer often puts it behind the IME).
     private var popupView: KeyPopupView? = null
 
     // Space-trackpad state.
@@ -243,32 +242,45 @@ class KeyboardView @JvmOverloads constructor(
         val all = (listOf(base) + chars.map { it.toString() }).distinct()
         val popup = KeyPopupView(context, all, theme)
         popup.selectedIndex = 0
+        popup.elevation = dp(8f).toFloat()
         popupView = popup
 
         popup.measure(
             MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
             MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
         )
-        val w = popup.measuredWidth
-        val h = popup.measuredHeight
+        val popupW = popup.measuredWidth
+        val popupH = popup.measuredHeight
 
-        val loc = IntArray(2)
-        anchor.getLocationOnScreen(loc)
-        val centerX = loc[0] + anchor.width / 2
-        val x = (centerX - w / 2).coerceAtLeast(0)
-        val y = (loc[1] - h - dp(4f)).coerceAtLeast(0)
+        // Position relative to KeyboardView's own coords (not screen coords).
+        val anchorLoc = IntArray(2)
+        val selfLoc = IntArray(2)
+        anchor.getLocationInWindow(anchorLoc)
+        getLocationInWindow(selfLoc)
 
-        popupWindow = PopupWindow(popup, w, h, false).apply {
-            isClippingEnabled = false
-            isTouchable = false
-            isFocusable = false
-            showAtLocation(this@KeyboardView, Gravity.NO_GRAVITY, x, y)
+        val anchorX = anchorLoc[0] - selfLoc[0]
+        val anchorY = anchorLoc[1] - selfLoc[1]
+        val anchorCenterX = anchorX + anchor.width / 2
+
+        var popupX = anchorCenterX - popupW / 2
+        var popupY = anchorY - popupH - dp(4f)
+
+        // Clamp horizontally inside the keyboard.
+        if (popupX < 0) popupX = 0
+        if (popupX + popupW > width) popupX = width - popupW
+
+        // If above the keyboard top, fall back to showing it below the key.
+        if (popupY < 0) popupY = anchorY + anchor.height + dp(4f)
+
+        val lp = LayoutParams(popupW, popupH).apply {
+            leftMargin = popupX
+            topMargin = popupY
         }
+        addView(popup, lp)
     }
 
     private fun dismissPopup() {
-        popupWindow?.dismiss()
-        popupWindow = null
+        popupView?.let { removeView(it) }
         popupView = null
     }
 
