@@ -17,6 +17,14 @@ android {
     }
 
     signingConfigs {
+        // Stable debug keystore committed to the repo so debug APKs built
+        // anywhere (local / CI / another machine) share the same signature.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         create("release") {
             // Bundled keystore — override via env vars / CI secrets if you need
             // a different signing identity.
@@ -44,6 +52,7 @@ android {
         }
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
