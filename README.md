@@ -107,8 +107,9 @@ with proper IME integration so apps see real `Ctrl+C`, `Alt+Tab`, etc.
 
 CI is **manual-only** (`workflow_dispatch`) — see
 `.github/workflows/android.yml`. The workflow installs the Android SDK,
-generates the Gradle wrapper if missing, runs lint, and uploads both
-debug and release APKs as artifacts.
+generates the Gradle wrapper if missing, runs lint and uploads the debug
+APK. **Release APKs are built on the developer's device only**, never on
+CI, so the release signing key never has to leave the local machine.
 
 ### Signing
 
@@ -130,8 +131,7 @@ before running `assembleRelease`:
 
 If any of those are missing, `assembleRelease` still builds — it just
 produces `app-release-unsigned.apk` that you can sign later with
-`apksigner`. To sign in CI, add the keystore as a secret and decode it
-in a workflow step before `assembleRelease` runs.
+`apksigner`.
 
 ## License
 

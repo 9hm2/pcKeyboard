@@ -1,11 +1,13 @@
 name: Android CI
 
+# Release APKs are built on the developer's own device — CI only verifies
+# that debug builds compile and lints cleanly.
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build debug & release APK
+    name: Build debug APK
     runs-on: ubuntu-latest
 
     steps:
@@ -40,40 +42,11 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --stacktrace --warning-mode=summary
 
-      # Release keystore lives in secrets, not in the repo. If the secret
-      # is set, decode it to app/release.keystore before assembling so the
-      # release APK is signed; otherwise the build produces
-      # app-release-unsigned.apk.
-      - name: Decode release keystore (if provided)
-        env:
-          PCK_KEYSTORE_BASE64: ${{ secrets.PCK_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$PCK_KEYSTORE_BASE64" ]; then
-            echo "$PCK_KEYSTORE_BASE64" | base64 -d > app/release.keystore
-            echo "Release keystore installed."
-          else
-            echo "PCK_KEYSTORE_BASE64 secret not set — release APK will be unsigned."
-          fi
-
-      - name: Build release APK
-        env:
-          PCK_KEYSTORE_PASSWORD: ${{ secrets.PCK_KEYSTORE_PASSWORD }}
-          PCK_KEY_ALIAS: ${{ secrets.PCK_KEY_ALIAS }}
-          PCK_KEY_PASSWORD: ${{ secrets.PCK_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --stacktrace --warning-mode=summary
-
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: pckeyboard-debug
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: pckeyboard-release
-          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       - name: Upload lint report

@@ -32,6 +32,11 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var currentMode: LayoutMode = LayoutMode.MAIN
     private var keyboardView: KeyboardView? = null
 
+    companion object {
+        /** How many lines Page Up / Page Down skips. */
+        private const val PAGE_LINES = 10
+    }
+
     override fun onCreate() {
         super.onCreate()
         themeRepo = ThemeRepository(this)
@@ -77,20 +82,25 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (currentInputConnection == null) return
         when (key.type) {
             KeyType.SPACE -> commitChar(' ')
-            KeyType.ENTER -> sendKey(KeyEvent.KEYCODE_ENTER, modifiers)
+            KeyType.ENTER -> handleEnter(modifiers)
             KeyType.BACKSPACE -> sendKey(KeyEvent.KEYCODE_DEL, modifiers)
             KeyType.DELETE -> sendKey(KeyEvent.KEYCODE_FORWARD_DEL, modifiers)
             KeyType.TAB -> sendKey(KeyEvent.KEYCODE_TAB, modifiers)
             KeyType.ESC -> sendKey(KeyEvent.KEYCODE_ESCAPE, modifiers)
-            KeyType.ARROW_LEFT -> sendKey(KeyEvent.KEYCODE_DPAD_LEFT, modifiers)
-            KeyType.ARROW_RIGHT -> sendKey(KeyEvent.KEYCODE_DPAD_RIGHT, modifiers)
-            KeyType.ARROW_UP -> sendKey(KeyEvent.KEYCODE_DPAD_UP, modifiers)
-            KeyType.ARROW_DOWN -> sendKey(KeyEvent.KEYCODE_DPAD_DOWN, modifiers)
-            KeyType.HOME -> sendKey(KeyEvent.KEYCODE_MOVE_HOME, modifiers)
-            KeyType.END -> sendKey(KeyEvent.KEYCODE_MOVE_END, modifiers)
-            KeyType.PAGE_UP -> sendKey(KeyEvent.KEYCODE_PAGE_UP, modifiers)
-            KeyType.PAGE_DOWN -> sendKey(KeyEvent.KEYCODE_PAGE_DOWN, modifiers)
-            KeyType.INSERT -> sendKey(KeyEvent.KEYCODE_INSERT, modifiers)
+            // Arrow keys move the cursor via InputConnection.setSelection
+            // rather than DPAD KeyEvents, otherwise the system / launcher /
+            // foldable window manager may steal the event for navigation
+            // (selecting the floating-window grab handle, moving focus to
+            // a sibling Send button, etc.).
+            KeyType.ARROW_LEFT -> moveCursor(-1, 0, modifiers)
+            KeyType.ARROW_RIGHT -> moveCursor(1, 0, modifiers)
+            KeyType.ARROW_UP -> moveCursor(0, -1, modifiers)
+            KeyType.ARROW_DOWN -> moveCursor(0, 1, modifiers)
+            KeyType.HOME -> moveCursor(Int.MIN_VALUE, 0, modifiers)
+            KeyType.END -> moveCursor(Int.MAX_VALUE, 0, modifiers)
+            KeyType.PAGE_UP -> moveCursor(0, -PAGE_LINES, modifiers)
+            KeyType.PAGE_DOWN -> moveCursor(0, PAGE_LINES, modifiers)
+            KeyType.INSERT -> { /* no-op — InputConnection has no insert mode */ }
             KeyType.FN -> if (key.keyCode != 0) sendKey(key.keyCode, modifiers)
             KeyType.SYMBOL_SWITCH -> switchSymbols()
             KeyType.LAYOUT_SWITCH -> switchSymbolsShift()
@@ -138,31 +148,63 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         bindCurrentLayout()
     }
 
-    /**
-     * Trackpad cursor motion. Uses [InputConnection.setSelection] so we
-     * never inject DPAD KeyEvents — those can move focus to a non-editable
-     * sibling view (e.g. a chat-app Send button) which then fires
-     * onFinishInput and tears down the IME, looking like the keyboard
-     * vanished mid-gesture.
-     */
+    /** Trackpad cursor motion — no modifier semantics. */
     override fun onCursorMove(dx: Int, dy: Int) {
+        moveCursor(dx, dy, null)
+    }
+
+    /**
+     * Move the caret by [dx] characters and [dy] lines using
+     * [InputConnection.setSelection] / [InputConnection.performEditorAction]
+     * instead of DPAD KeyEvents. This keeps focus inside the editor — the
+     * system / launcher / foldable window manager can't steal the event to
+     * select the floating-window grab handle or jump to a sibling view.
+     *
+     * Modifier semantics:
+     *  - Ctrl: word-boundary jump (only for horizontal motion).
+     *  - Shift: extend selection instead of moving the caret.
+     */
+    private fun moveCursor(dx: Int, dy: Int, modifiers: ModifierState?) {
         val ic = currentInputConnection ?: return
         val req = ExtractedTextRequest().apply {
-            hintMaxChars = 4096
-            hintMaxLines = 256
+            hintMaxChars = 8192
+            hintMaxLines = 512
         }
         val ext = ic.getExtractedText(req, 0) ?: return
         val text = ext.text?.toString() ?: return
-        val origin = ext.selectionStart
-        if (origin < 0) return
+        val anchor = ext.selectionStart
+        val active = ext.selectionEnd
+        if (anchor < 0 || active < 0) return
 
-        var newPos = (origin + dx).coerceIn(0, text.length)
+        val isCtrl = modifiers?.isCtrlActive() == true
+        val isShift = modifiers?.isShiftActive() == true
 
+        var newActive = active
+
+        // Horizontal motion.
+        when {
+            dx == Int.MIN_VALUE -> {
+                // Home: start of current line.
+                newActive = text.lastIndexOf('\n', (newActive - 1).coerceAtLeast(0)) + 1
+            }
+            dx == Int.MAX_VALUE -> {
+                // End: end of current line.
+                val nl = text.indexOf('\n', newActive)
+                newActive = if (nl == -1) text.length else nl
+            }
+            dx != 0 && isCtrl -> {
+                newActive = wordJump(text, newActive, dx)
+            }
+            dx != 0 -> {
+                newActive = (newActive + dx).coerceIn(0, text.length)
+            }
+        }
+
+        // Vertical motion.
         if (dy != 0 && text.isNotEmpty()) {
             val currentLineStart =
-                text.lastIndexOf('\n', (newPos - 1).coerceAtLeast(0)) + 1
-            val column = newPos - currentLineStart
-
+                text.lastIndexOf('\n', (newActive - 1).coerceAtLeast(0)) + 1
+            val column = newActive - currentLineStart
             var lineStart = currentLineStart
             if (dy > 0) {
                 for (i in 0 until dy) {
@@ -179,10 +221,60 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             }
             val nextNl = text.indexOf('\n', lineStart)
             val lineLen = if (nextNl == -1) text.length - lineStart else nextNl - lineStart
-            newPos = lineStart + column.coerceAtMost(lineLen)
+            newActive = lineStart + column.coerceAtMost(lineLen)
         }
 
-        if (newPos != origin) ic.setSelection(newPos, newPos)
+        val newAnchor = if (isShift) anchor else newActive
+        if (newActive != active || newAnchor != anchor) {
+            ic.setSelection(newAnchor, newActive)
+        }
+    }
+
+    private fun wordJump(text: String, from: Int, direction: Int): Int {
+        if (text.isEmpty()) return from
+        return if (direction > 0) {
+            var i = from
+            while (i < text.length && !text[i].isLetterOrDigit()) i++
+            while (i < text.length && text[i].isLetterOrDigit()) i++
+            i
+        } else {
+            var i = from - 1
+            while (i >= 0 && !text[i].isLetterOrDigit()) i--
+            while (i >= 0 && text[i].isLetterOrDigit()) i--
+            i + 1
+        }
+    }
+
+    /**
+     * Enter semantics. Same reason as the arrow keys: a raw KEYCODE_ENTER
+     * can be intercepted by the system as DPAD_CENTER and steal focus.
+     * Use [InputConnection.performEditorAction] for the action the editor
+     * declared (Send / Done / Search / Next / ...), or commit a literal
+     * newline if the editor wants Enter to be a newline.
+     */
+    private fun handleEnter(modifiers: ModifierState) {
+        val ic = currentInputConnection ?: return
+        // Any modifier on Enter means "newline" rather than "submit form"
+        // (Shift+Enter is the universal "newline in a chat field" combo).
+        if (modifiers.isShiftActive() || modifiers.shouldSendAsKeyEvent()) {
+            ic.commitText("\n", 1)
+            return
+        }
+        val info = currentInputEditorInfo
+        if (info == null) {
+            ic.commitText("\n", 1)
+            return
+        }
+        val opts = info.imeOptions
+        val action = opts and EditorInfo.IME_MASK_ACTION
+        val noEnterAction = opts and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
+        when {
+            noEnterAction -> ic.commitText("\n", 1)
+            action != EditorInfo.IME_ACTION_NONE &&
+                action != EditorInfo.IME_ACTION_UNSPECIFIED ->
+                ic.performEditorAction(action)
+            else -> ic.commitText("\n", 1)
+        }
     }
 
     private fun androidKeyCodeForChar(c: Char): Int {
