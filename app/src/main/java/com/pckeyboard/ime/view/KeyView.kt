@@ -25,7 +25,7 @@ class KeyView(
     var modifiers: ModifierState
 ) : View(context) {
 
-    var pressed: Boolean = false
+    var isDown: Boolean = false
         set(value) { field = value; invalidate() }
 
     var listener: Listener? = null
@@ -98,7 +98,7 @@ class KeyView(
     }
 
     private fun backgroundColorForState(): Int {
-        if (pressed) return theme.keyPressedColor
+        if (isDown) return theme.keyPressedColor
         return when (key.type) {
             KeyType.SPACE, KeyType.ENTER -> theme.accentColor
             KeyType.LETTER, KeyType.CHAR -> theme.keyBackgroundColor
@@ -145,18 +145,18 @@ class KeyView(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                pressed = true
+                isDown = true
                 listener?.onKeyDown(this)
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                pressed = false
+                isDown = false
                 listener?.onKeyUp(this)
                 performClick()
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
-                pressed = false
+                isDown = false
                 listener?.onKeyCancel(this)
                 return true
             }

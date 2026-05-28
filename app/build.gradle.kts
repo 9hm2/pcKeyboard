@@ -16,10 +16,27 @@ android {
         resourceConfigurations += listOf("en")
     }
 
+    signingConfigs {
+        create("release") {
+            // Bundled keystore — override via env vars / CI secrets if you need
+            // a different signing identity.
+            val keystoreFile = file(
+                System.getenv("PCK_KEYSTORE_FILE") ?: "release.keystore"
+            )
+            storeFile = keystoreFile
+            storePassword = System.getenv("PCK_KEYSTORE_PASSWORD")
+                ?: "pcKeyboardRelease2026"
+            keyAlias = System.getenv("PCK_KEY_ALIAS") ?: "pckeyboard"
+            keyPassword = System.getenv("PCK_KEY_PASSWORD")
+                ?: "pcKeyboardRelease2026"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
