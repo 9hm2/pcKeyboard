@@ -7,27 +7,39 @@ import com.pckeyboard.ime.model.KeyboardLayout
 import com.pckeyboard.ime.model.LayoutMode
 
 /**
- * Rows + symbol pages that are shared across every locale (function keys,
- * the number row, the bottom control row, the two symbol pages). Locale
- * layouts only need to supply their own letter rows.
+ * Rows + symbol pages that are shared across every locale.
+ *
+ * Structure follows the AOSP "Hacker's Keyboard" kbd_full.xml conventions
+ * for a desktop-faithful 6-row layout:
+ *  - Row 0 (Fn extension): F1-F12 + Home + End
+ *  - Row 1 (Numbers):      ` 1-0 - = ⌫
+ *  - Row 2 (Top letters):  Tab + q-p + [ ] \             (locale-specific)
+ *  - Row 3 (Home letters): Ctrl + a-l + ... + Enter      (locale-specific)
+ *  - Row 4 (Bottom):       ⇧ + < + z-m + , . / + ↑ + ⇧  (locale-specific)
+ *  - Row 5 (Control):      Esc 🌐 Alt Win 123 Space ◀ ▼ ▶
+ *
+ * Ctrl on the home-row left (where Caps Lock sits on most consumer PCs)
+ * matches HK; double-tap Shift gives shift-lock for "all caps" needs.
+ * The bottom-row up-arrow + control-row left/down/right form the inverted-T
+ * arrow cluster of a real desktop keyboard.
  */
 internal object LayoutBlocks {
 
     fun fnRow(): List<Key> = listOf(
-        Key.fn("Esc", KeyType.ESC, KeyEvent.KEYCODE_ESCAPE, weight = 1.2f),
-        Key.fn("F1",  KeyType.FN, KeyEvent.KEYCODE_F1),
-        Key.fn("F2",  KeyType.FN, KeyEvent.KEYCODE_F2),
-        Key.fn("F3",  KeyType.FN, KeyEvent.KEYCODE_F3),
-        Key.fn("F4",  KeyType.FN, KeyEvent.KEYCODE_F4),
-        Key.fn("F5",  KeyType.FN, KeyEvent.KEYCODE_F5),
-        Key.fn("F6",  KeyType.FN, KeyEvent.KEYCODE_F6),
-        Key.fn("F7",  KeyType.FN, KeyEvent.KEYCODE_F7),
-        Key.fn("F8",  KeyType.FN, KeyEvent.KEYCODE_F8),
-        Key.fn("F9",  KeyType.FN, KeyEvent.KEYCODE_F9),
-        Key.fn("F10", KeyType.FN, KeyEvent.KEYCODE_F10),
-        Key.fn("F11", KeyType.FN, KeyEvent.KEYCODE_F11),
-        Key.fn("F12", KeyType.FN, KeyEvent.KEYCODE_F12),
-        Key.fn("Del", KeyType.DELETE, KeyEvent.KEYCODE_FORWARD_DEL, weight = 1.2f, repeatable = true)
+        Key.fn("F1",   KeyType.FN, KeyEvent.KEYCODE_F1),
+        Key.fn("F2",   KeyType.FN, KeyEvent.KEYCODE_F2),
+        Key.fn("F3",   KeyType.FN, KeyEvent.KEYCODE_F3),
+        Key.fn("F4",   KeyType.FN, KeyEvent.KEYCODE_F4),
+        Key.fn("F5",   KeyType.FN, KeyEvent.KEYCODE_F5),
+        Key.fn("F6",   KeyType.FN, KeyEvent.KEYCODE_F6),
+        Key.fn("F7",   KeyType.FN, KeyEvent.KEYCODE_F7),
+        Key.fn("F8",   KeyType.FN, KeyEvent.KEYCODE_F8),
+        Key.fn("F9",   KeyType.FN, KeyEvent.KEYCODE_F9),
+        Key.fn("F10",  KeyType.FN, KeyEvent.KEYCODE_F10),
+        Key.fn("F11",  KeyType.FN, KeyEvent.KEYCODE_F11),
+        Key.fn("F12",  KeyType.FN, KeyEvent.KEYCODE_F12),
+        Key.fn("Home", KeyType.HOME),
+        Key.fn("End",  KeyType.END)
     )
 
     fun numberRow(): List<Key> = listOf(
@@ -48,21 +60,20 @@ internal object LayoutBlocks {
     )
 
     /**
-     * Bottom row. The Win key has been replaced with a globe — long-press
-     * the space bar to use the trackpad, tap the globe to cycle locales.
+     * Bottom-bottom row. Esc on the left, the inverted-T arrow cluster
+     * (left / down / right) on the right; the matching up-arrow sits at the
+     * end of the previous row, just like a desktop arrow cluster.
      */
     fun controlRow(): List<Key> = listOf(
-        Key.fn("Ctrl", KeyType.CTRL, sticky = true, weight = 1.3f),
-        Key.fn("🌐",  KeyType.LANGUAGE_SWITCH, weight = 1.1f),
-        Key.fn("Alt",  KeyType.ALT,  sticky = true, weight = 1.1f),
-        Key.fn("123",  KeyType.SYMBOL_SWITCH, weight = 1.2f),
-        Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 5.5f),
-        Key.fn("◀",   KeyType.ARROW_LEFT,  KeyEvent.KEYCODE_DPAD_LEFT,  repeatable = true),
-        Key.fn("▲",   KeyType.ARROW_UP,    KeyEvent.KEYCODE_DPAD_UP,    repeatable = true),
-        Key.fn("▼",   KeyType.ARROW_DOWN,  KeyEvent.KEYCODE_DPAD_DOWN,  repeatable = true),
-        Key.fn("▶",   KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true),
-        Key.fn("Alt",  KeyType.ALT,  sticky = true, weight = 1.1f),
-        Key.fn("Ctrl", KeyType.CTRL, sticky = true, weight = 1.3f)
+        Key.fn("Esc",   KeyType.ESC, KeyEvent.KEYCODE_ESCAPE, weight = 1.5f),
+        Key.fn("🌐",   KeyType.LANGUAGE_SWITCH, weight = 1.0f),
+        Key.fn("Alt",   KeyType.ALT,  sticky = true, weight = 1.0f),
+        Key.fn("Win",   KeyType.META, sticky = true, weight = 1.0f),
+        Key.fn("123",   KeyType.SYMBOL_SWITCH, weight = 1.1f),
+        Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 5.4f),
+        Key.fn("◀",    KeyType.ARROW_LEFT,  KeyEvent.KEYCODE_DPAD_LEFT,  repeatable = true),
+        Key.fn("▼",    KeyType.ARROW_DOWN,  KeyEvent.KEYCODE_DPAD_DOWN,  repeatable = true),
+        Key.fn("▶",    KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true)
     )
 
     fun symbols(): KeyboardLayout = KeyboardLayout(
@@ -124,12 +135,16 @@ internal object LayoutBlocks {
     )
 
     /**
-     * Assemble a complete main layout from the shared Fn / number / control
-     * rows plus the three locale-specific letter rows.
+     * Assemble a complete main layout from the shared Fn / control rows
+     * plus the four locale-specific rows (number, top, home, bottom). The
+     * number row is locale-specific because the row's shift glyphs and the
+     * far-right keys differ per ISO keyboard (HU has 0 then ö ü ó, DE has
+     * ß ', ES has ' ¡, etc.).
      */
     fun mainLayout(
         id: String,
         displayName: String,
+        numberRow: List<Key>,
         topLetters: List<Key>,
         homeLetters: List<Key>,
         bottomLetters: List<Key>
@@ -138,7 +153,7 @@ internal object LayoutBlocks {
         displayName = displayName,
         rows = listOf(
             fnRow(),
-            numberRow(),
+            numberRow,
             topLetters,
             homeLetters,
             bottomLetters,
