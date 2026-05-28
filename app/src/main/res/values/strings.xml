@@ -44,4 +44,12 @@
     <string name="theme_editor_radius">Corner radius</string>
     <string name="theme_editor_spacing">Key spacing</string>
     <string name="theme_editor_save">Save</string>
+
+    <string name="update_title">Update available: %1$s</string>
+    <string name="update_message">Version %1$s is available. You have %2$s.</string>
+    <string name="update_no_notes">A new version is available.</string>
+    <string name="update_btn_download">Download</string>
+    <string name="update_btn_later">Later</string>
+    <string name="update_btn_view_page">View on GitHub</string>
+    <string name="update_downloading">Downloading update…</string>
 </resources>

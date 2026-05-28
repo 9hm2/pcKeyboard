@@ -1,9 +1,17 @@
 name: Android CI
 
-# Release APKs are built on the developer's own device — CI only verifies
-# that debug builds compile and lints cleanly.
+# Manual-only — pass a release tag in the input to also publish a GitHub
+# Release with the built debug APK attached.
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag for a GitHub Release (leave empty to only upload as artifact)"
+        required: false
+        type: string
+
+permissions:
+  contents: write   # softprops/action-gh-release needs this when release_tag is set
 
 jobs:
   build:
@@ -42,11 +50,19 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --stacktrace --warning-mode=summary
 
-      - name: Upload debug APK
+      - name: Rename APK with version
+        id: rename
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             dist/pckeyboard-debug.apk
+          echo "apk_path=dist/pckeyboard-debug.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: pckeyboard-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: dist/pckeyboard-debug.apk
           if-no-files-found: error
 
       - name: Upload lint report
@@ -56,3 +72,14 @@ jobs:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
+
+      # Publish a GitHub Release with the APK so the in-app updater can find
+      # it. Skipped when release_tag is empty (artifact-only build).
+      - name: Create GitHub Release
+        if: ${{ inputs.release_tag != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_tag }}
+          generate_release_notes: true
+          files: ${{ steps.rename.outputs.apk_path }}

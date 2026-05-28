@@ -132,6 +132,26 @@ generates the Gradle wrapper if missing, runs lint and uploads the debug
 APK. **Release APKs are built on the developer's device only**, never on
 CI, so the release signing key never has to leave the local machine.
 
+The workflow has an optional `release_tag` input — pass a tag (e.g.
+`v1.2.0`) and it'll also publish a GitHub Release with the freshly-built
+debug APK attached. The in-app updater (see below) finds this release
+and offers it to the user.
+
+### In-app updater
+
+`UpdateChecker` polls
+`https://api.github.com/repos/9hm2/pcKeyboard/releases/latest` on
+SetupActivity launch (throttled to once per 12 hours), compares the
+release tag against `BuildConfig.VERSION_NAME`, and surfaces a Material
+dialog when a newer release is published. The dialog shows the version
++ release notes and offers three buttons:
+
+- **Download** — enqueues the .apk asset via `DownloadManager`; the
+  system notification on completion lets the user tap to install (the
+  app declares `REQUEST_INSTALL_PACKAGES`).
+- **View on GitHub** — opens the release page in the browser.
+- **Later** — dismisses; the throttle defers the next check by 12h.
+
 The debug keystore (`app/debug.keystore`, the well-known Android default)
 is committed so debug APKs are signed identically on every machine. The
 release keystore is not in the repo — see `app/build.gradle.kts` for the
