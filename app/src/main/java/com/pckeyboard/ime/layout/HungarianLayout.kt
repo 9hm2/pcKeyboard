@@ -41,8 +41,7 @@ object HungarianLayout {
         Key.letter("l"),
         Key.char("é", "É"),
         Key.char("á", "Á"),
-        Key.char("ű", "Ű"),
-        Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.6f)
+        Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 2.0f)
     )
 
     private fun bottomLetters(): List<Key> = listOf(

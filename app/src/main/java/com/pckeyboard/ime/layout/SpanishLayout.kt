@@ -40,9 +40,8 @@ object SpanishLayout {
         Key.letter("k"),
         Key.letter("l"),
         Key.char("ñ", "Ñ"),
-        Key.char(";", ":"),
         Key.char("'", "\"", popup = "‘’"),
-        Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.6f)
+        Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 2.0f)
     )
 
     private fun bottomLetters(): List<Key> = listOf(

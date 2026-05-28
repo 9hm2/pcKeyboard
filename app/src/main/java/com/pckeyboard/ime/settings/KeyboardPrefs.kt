@@ -54,12 +54,18 @@ class KeyboardPrefs(context: Context) {
             prefs.edit().putInt(KEY_LP_DELAY, value.coerceIn(150, 1000)).apply()
         }
 
+    /** The keyboard's currently selected language pack id, e.g. "en_US". */
+    var currentLanguage: String
+        get() = prefs.getString(KEY_LANG, "en_US") ?: "en_US"
+        set(value) { prefs.edit().putString(KEY_LANG, value).apply() }
+
     companion object {
         private const val KEY_HEIGHT = "kb_height_scale"
         private const val KEY_HPAD = "kb_horizontal_padding"
         private const val KEY_SPLIT = "kb_split_enabled"
         private const val KEY_SPLIT_GAP = "kb_split_gap_weight"
         private const val KEY_LP_DELAY = "kb_long_press_delay_ms"
+        private const val KEY_LANG = "kb_current_language"
 
         /** Threshold above which split mode is applied. */
         const val SPLIT_MIN_WIDTH_DP = 600
