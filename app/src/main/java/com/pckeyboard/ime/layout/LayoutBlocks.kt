@@ -11,21 +11,22 @@ import com.pckeyboard.ime.model.LayoutMode
  *
  * Structure follows the AOSP "Hacker's Keyboard" kbd_full.xml conventions
  * for a desktop-faithful 6-row layout:
- *  - Row 0 (Fn extension): F1-F12 + Home + End
+ *  - Row 0 (Fn extension): Esc + F1-F11 + Home + End
  *  - Row 1 (Numbers):      ` 1-0 - = ⌫
  *  - Row 2 (Top letters):  Tab + q-p + [ ] \             (locale-specific)
- *  - Row 3 (Home letters): Ctrl + a-l + ... + Enter      (locale-specific)
+ *  - Row 3 (Home letters): Caps + a-l + ... + Enter      (locale-specific)
  *  - Row 4 (Bottom):       ⇧ + < + z-m + , . / + ↑ + ⇧  (locale-specific)
- *  - Row 5 (Control):      Esc 🌐 Alt Win 123 Space ◀ ▼ ▶
+ *  - Row 5 (Control):      Ctrl 🌐 Win Alt 123 Space ◀ ▼ ▶ Ctrl
  *
- * Ctrl on the home-row left (where Caps Lock sits on most consumer PCs)
- * matches HK; double-tap Shift gives shift-lock for "all caps" needs.
- * The bottom-row up-arrow + control-row left/down/right form the inverted-T
- * arrow cluster of a real desktop keyboard.
+ * Caps Lock on the home-row left and Ctrl on the bottom-bottom row matches
+ * the physical layout of every consumer PC keyboard. The bottom-row
+ * up-arrow + control-row left/down/right form the inverted-T arrow cluster
+ * of a real desktop keyboard.
  */
 internal object LayoutBlocks {
 
     fun fnRow(): List<Key> = listOf(
+        Key.fn("Esc",  KeyType.ESC, KeyEvent.KEYCODE_ESCAPE),
         Key.fn("F1",   KeyType.FN, KeyEvent.KEYCODE_F1),
         Key.fn("F2",   KeyType.FN, KeyEvent.KEYCODE_F2),
         Key.fn("F3",   KeyType.FN, KeyEvent.KEYCODE_F3),
@@ -37,7 +38,6 @@ internal object LayoutBlocks {
         Key.fn("F9",   KeyType.FN, KeyEvent.KEYCODE_F9),
         Key.fn("F10",  KeyType.FN, KeyEvent.KEYCODE_F10),
         Key.fn("F11",  KeyType.FN, KeyEvent.KEYCODE_F11),
-        Key.fn("F12",  KeyType.FN, KeyEvent.KEYCODE_F12),
         Key.fn("Home", KeyType.HOME),
         Key.fn("End",  KeyType.END)
     )
@@ -64,17 +64,21 @@ internal object LayoutBlocks {
      * the whole keyboard; the centre of ▼ sits at 89.3 % of the row width,
      * which is exactly the column of ▲ at the right end of the bottom
      * letter row, forming a real inverted-T arrow cluster.
+     *
+     * Ctrl sits at both ends — directly beneath the left and right Shift
+     * keys of the bottom letter row — mirroring a real desktop keyboard.
      */
     fun controlRow(): List<Key> = listOf(
-        Key.fn("Esc",   KeyType.ESC, KeyEvent.KEYCODE_ESCAPE, weight = 1.5f),
+        Key.fn("Ctrl",  KeyType.CTRL, sticky = true, weight = 1.0f),
         Key.fn("🌐",   KeyType.LANGUAGE_SWITCH, weight = 1.0f),
-        Key.fn("Alt",   KeyType.ALT,  sticky = true, weight = 1.0f),
         Key.fn("Win",   KeyType.META, sticky = true, weight = 1.0f),
-        Key.fn("123",   KeyType.SYMBOL_SWITCH, weight = 1.5f),
-        Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 5.0f),
+        Key.fn("Alt",   KeyType.ALT,  sticky = true, weight = 1.0f),
+        Key.fn("123",   KeyType.SYMBOL_SWITCH, weight = 1.0f),
+        Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 6.0f),
         Key.fn("◀",    KeyType.ARROW_LEFT,  KeyEvent.KEYCODE_DPAD_LEFT,  repeatable = true),
         Key.fn("▼",    KeyType.ARROW_DOWN,  KeyEvent.KEYCODE_DPAD_DOWN,  repeatable = true),
-        Key.fn("▶",    KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true)
+        Key.fn("▶",    KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true),
+        Key.fn("Ctrl",  KeyType.CTRL, sticky = true, weight = 1.0f)
     )
 
     fun symbols(): KeyboardLayout = KeyboardLayout(

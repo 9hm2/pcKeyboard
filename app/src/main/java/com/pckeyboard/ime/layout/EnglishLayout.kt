@@ -9,7 +9,7 @@ import com.pckeyboard.ime.model.KeyboardLayout
  * US English (ANSI QWERTY). Matches HK's default `donottranslate-keymap.xml`:
  *  - Number row: ` 1-0 - =
  *  - Top:        Tab + q-p + [ ] \
- *  - Home:       Ctrl + a-l + ; ' + Enter
+ *  - Home:       Caps + a-l + ; ' + Enter
  *  - Bottom:     Shift + (no LSGT) + z-m + , . / + ↑ + Shift
  *
  * ANSI doesn't have an LSGT key, so the bottom row uses a slightly wider
@@ -52,7 +52,7 @@ object EnglishLayout {
     )
 
     private fun homeLetters(): List<Key> = listOf(
-        Key.fn("Ctrl", KeyType.CTRL, sticky = true, weight = 1.5f),
+        Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.5f),
         Key.letter("a", popup = "àáâäãåæāąª"),
         Key.letter("s", popup = "ßśšșş"),
         Key.letter("d", popup = "ðď"),

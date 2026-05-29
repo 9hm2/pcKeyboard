@@ -9,7 +9,7 @@ import com.pckeyboard.ime.model.KeyboardLayout
  * German (DE ISO 105-key, QWERTZ). Matches HK's `values-de/...keymap.xml`:
  *  - Number row: ^ 1-0 ß '   (^ in tlde slot, ß ' as last two)
  *  - Top:        Tab + q-p + ü + #   (# in the bksl slot, + as ad12)
- *  - Home:       Ctrl + a-l + ö ä + Enter   (11 letter-positions)
+ *  - Home:       Caps + a-l + ö ä + Enter   (11 letter-positions)
  *  - Bottom:     ⇧ + < + y-m + , . - + ↑ + ⇧   (< in the LSGT slot)
  */
 object GermanLayout {
@@ -51,7 +51,7 @@ object GermanLayout {
     )
 
     private fun homeLetters(): List<Key> = listOf(
-        Key.fn("Ctrl", KeyType.CTRL, sticky = true, weight = 1.5f),
+        Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.5f),
         Key.letter("a", alt = "ä", popup = "äàáâãåæ"),
         Key.letter("s", alt = "§", popup = "§ßśš"),
         Key.letter("d"),

@@ -14,7 +14,7 @@ import com.pckeyboard.ime.model.KeyboardLayout
  *  - Number row:    0 1-9 ö ü ó           (NOT EN-style ` 1-= — HU has 0
  *                                            on the left, ö ü ó on the right)
  *  - Top:           Tab + q-p ő ú + ű     (ű in the bksl slot)
- *  - Home:          Ctrl + a-l + é á + Enter
+ *  - Home:          Caps + a-l + é á + Enter
  *  - Bottom:        ⇧ + í + y-m + , . - + ↑ + ⇧
  */
 object HungarianLayout {
@@ -58,7 +58,7 @@ object HungarianLayout {
     )
 
     private fun homeLetters(): List<Key> = listOf(
-        Key.fn("Ctrl", KeyType.CTRL, sticky = true, weight = 1.5f),
+        Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.5f),
         Key.letter("a", alt = "ä", popup = "äáàâãåæ"),
         Key.letter("s", alt = "§", popup = "§ßš"),
         Key.letter("d", alt = "đ", popup = "đĐ"),

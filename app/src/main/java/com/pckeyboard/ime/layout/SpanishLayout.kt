@@ -10,7 +10,7 @@ import com.pckeyboard.ime.model.KeyboardLayout
  *  - Number row: º 1-0 ' ¡   (º in tlde slot, ' ¡ as last two)
  *  - Top:        Tab + q-p + ` + + ç   (ç in the bksl slot, ` as ad11,
  *                                       + as ad12)
- *  - Home:       Ctrl + a-l + ñ ´ + Enter   (´ as the acute dead-key slot)
+ *  - Home:       Caps + a-l + ñ ´ + Enter   (´ as the acute dead-key slot)
  *  - Bottom:     ⇧ + < + z-m + , . - + ↑ + ⇧   (< in the LSGT slot)
  */
 object SpanishLayout {
@@ -52,7 +52,7 @@ object SpanishLayout {
     )
 
     private fun homeLetters(): List<Key> = listOf(
-        Key.fn("Ctrl", KeyType.CTRL, sticky = true, weight = 1.5f),
+        Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.5f),
         Key.letter("a", alt = "á", popup = "áàâäãå"),
         Key.letter("s", alt = "§", popup = "§ß"),
         Key.letter("d"),

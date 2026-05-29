@@ -158,6 +158,18 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         }
     }
 
+    /**
+     * When the IME is dismissed (focus lost, app backgrounded, etc.) reset
+     * any transient mode — symbols/emoji/clipboard — so the next time it
+     * opens we start clean on the main letters layout.
+     */
+    override fun onFinishInputView(finishingInput: Boolean) {
+        super.onFinishInputView(finishingInput)
+        currentMode = LayoutMode.MAIN
+        keyboardView?.hideEmojiPicker()
+        keyboardView?.hideClipboard()
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         bindCurrentLayout()
