@@ -16,12 +16,13 @@ import com.pckeyboard.ime.model.LayoutMode
  *  - Row 2 (Top letters):  Tab + q-p + [ ] \             (locale-specific)
  *  - Row 3 (Home letters): Caps + a-l + ... + Enter      (locale-specific)
  *  - Row 4 (Bottom):       ⇧ + < + z-m + , . / + ↑ + ⇧  (locale-specific)
- *  - Row 5 (Control):      Ctrl 🌐 Win Alt 123 Space ◀ ▼ ▶ Ctrl
+ *  - Row 5 (Control):      Ctrl 🌐 Win Alt 123 Space ◀ ▼ ▶
  *
- * Caps Lock on the home-row left and Ctrl on the bottom-bottom row matches
- * the physical layout of every consumer PC keyboard. The bottom-row
- * up-arrow + control-row left/down/right form the inverted-T arrow cluster
- * of a real desktop keyboard.
+ * Every row totals weight 14 so a "1-unit" key is the same width in any
+ * row. The control row's ▼ at cumulative weight 12.5 sits directly under
+ * the bottom letter row's ▲ (also at 12.5), forming a real inverted-T
+ * arrow cluster — same shape Hacker's Keyboard uses. There is no right
+ * Ctrl: dropping it is what keeps the row at 14 instead of 15.
  */
 internal object LayoutBlocks {
 
@@ -60,13 +61,14 @@ internal object LayoutBlocks {
     )
 
     /**
-     * Bottom-bottom row. Total weight = 14 so the columns line up across
-     * the whole keyboard; the centre of ▼ sits at 89.3 % of the row width,
-     * which is exactly the column of ▲ at the right end of the bottom
-     * letter row, forming a real inverted-T arrow cluster.
+     * Bottom-bottom row. Total weight = 14 so columns line up with every
+     * other row; the centre of ▼ at 12.5 / 14 sits directly under the
+     * bottom letter row's ▲ at the same column, forming a real
+     * inverted-T arrow cluster (same shape Hacker's Keyboard uses).
      *
-     * Ctrl sits at both ends — directly beneath the left and right Shift
-     * keys of the bottom letter row — mirroring a real desktop keyboard.
+     * No right Ctrl on this row — adding one would push the total to 15
+     * and shift ▼ out from under ▲. Left Ctrl alone is enough to put a
+     * Ctrl below the left Shift, which is what was requested.
      */
     fun controlRow(): List<Key> = listOf(
         Key.fn("Ctrl",  KeyType.CTRL, sticky = true, weight = 1.0f),
@@ -77,8 +79,7 @@ internal object LayoutBlocks {
         Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 6.0f),
         Key.fn("◀",    KeyType.ARROW_LEFT,  KeyEvent.KEYCODE_DPAD_LEFT,  repeatable = true),
         Key.fn("▼",    KeyType.ARROW_DOWN,  KeyEvent.KEYCODE_DPAD_DOWN,  repeatable = true),
-        Key.fn("▶",    KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true),
-        Key.fn("Ctrl",  KeyType.CTRL, sticky = true, weight = 1.0f)
+        Key.fn("▶",    KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true)
     )
 
     fun symbols(): KeyboardLayout = KeyboardLayout(
