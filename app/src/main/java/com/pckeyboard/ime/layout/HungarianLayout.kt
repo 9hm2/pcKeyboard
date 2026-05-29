@@ -33,7 +33,7 @@ object HungarianLayout {
         Key.char("ö", "Ö", popup = "˝"),
         Key.char("ü", "Ü", popup = "-_"),
         Key.char("ó", "Ó", popup = "=≈"),
-        Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.5f, repeatable = true)
+        Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, repeatable = true)
     )
 
     // AltGr glyphs aligned with HK's values-hu/donottranslate-altchars.xml:
@@ -41,7 +41,7 @@ object HungarianLayout {
     // without a known AltGr (r, t, i, o, p, j, h) are left without alt= so
     // Alt+key passes through as a META_ALT_ON KeyEvent for app shortcuts.
     private fun topLetters(): List<Key> = listOf(
-        Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB, weight = 1.5f),
+        Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB),
         Key.letter("q", alt = "\\", popup = "\\"),
         Key.letter("w", alt = "|", popup = "|"),
         Key.letter("e", alt = "€", popup = "€éèêëē"),
@@ -54,7 +54,7 @@ object HungarianLayout {
         Key.letter("p", popup = "π₱§"),
         Key.char("ő", "Ő", popup = "÷[{"),
         Key.char("ú", "Ú", popup = "×]}"),
-        Key.char("ű", "Ű", popup = "\\|", weight = 1.5f)
+        Key.char("ű", "Ű", popup = "\\|")
     )
 
     private fun homeLetters(): List<Key> = listOf(

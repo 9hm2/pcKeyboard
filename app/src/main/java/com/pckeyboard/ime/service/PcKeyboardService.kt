@@ -163,6 +163,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         super.onFinishInputView(finishingInput)
         currentMode = LayoutMode.MAIN
         keyboardView?.hideEmojiPicker()
+        keyboardView?.hideEmojiSearchHeader()
         keyboardView?.hideClipboard()
     }
 

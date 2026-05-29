@@ -41,6 +41,13 @@ class KeyboardView @JvmOverloads constructor(
         orientation = LinearLayout.VERTICAL
     }
 
+    /** Vertical stack holding [emojiSearchHeader] (optional, on top) and
+     *  [rowsContainer]. Wraps both so the header can push the keyboard rows
+     *  down without overlapping them while emoji search is active. */
+    private val mainContainer = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+    }
+
     // Long-press popup state — rendered as a child of this FrameLayout so it
     // is always visible on top of the keys (a PopupWindow is unreliable in
     // an IME's input window: the system layer often puts it behind the IME).
@@ -51,6 +58,11 @@ class KeyboardView @JvmOverloads constructor(
 
     // Emoji picker overlay shown via the action menu "Emoji" item.
     private var emojiView: EmojiView? = null
+
+    // Emoji search slim header — when present, sits inside mainContainer
+    // above the keyboard rows; KeyboardView funnels char/letter/space/
+    // backspace presses into its query while it's mounted.
+    private var emojiSearchHeader: EmojiSearchHeaderView? = null
 
     // Clipboard manager overlay.
     private var clipboardView: com.pckeyboard.ime.clipboard.ClipboardView? = null
@@ -78,8 +90,14 @@ class KeyboardView @JvmOverloads constructor(
     private var trackpadSensitivity: Float = 1f
 
     init {
-        addView(
+        mainContainer.addView(
             rowsContainer,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        )
+        addView(
+            mainContainer,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         )
     }
@@ -99,7 +117,11 @@ class KeyboardView @JvmOverloads constructor(
             val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
             val perRowDp = if (widthDp >= 600f) 46f else 52f
             val base = dp(perRowDp) * rows + dp((theme?.keySpacingDp ?: 3).toFloat()) * (rows + 1)
-            val targetHeight = (base * prefs.heightScale).toInt()
+            // Grow the IME view by the search header height so the full
+            // keyboard stays at its normal size while the user is typing
+            // into the emoji search query above it.
+            val extra = if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0
+            val targetHeight = (base * prefs.heightScale).toInt() + extra
             val resolved = if (mode == MeasureSpec.AT_MOST) {
                 minOf(MeasureSpec.getSize(heightMeasureSpec), targetHeight)
             } else targetHeight
@@ -374,6 +396,9 @@ class KeyboardView @JvmOverloads constructor(
                         Key(0, "", type = KeyType.ENTER), modifiers
                     )
                 }
+                override fun onSearch() {
+                    showEmojiSearchHeader()
+                }
             }
         }
         emojiView = view
@@ -388,6 +413,43 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     fun isEmojiOpen(): Boolean = emojiView != null
+
+    // --- Emoji search header (full-keyboard search) ----------------------
+
+    /**
+     * Replaces the emoji picker with a thin search bar pinned above the
+     * normal keyboard rows. KeyboardView routes character / letter /
+     * space / backspace presses into the header's query so the user can
+     * type with the **full** keyboard (the regular layout stays in place).
+     * Picking a result commits it through [Listener.onText] and tears
+     * the header down so the user is back to normal typing.
+     */
+    private fun showEmojiSearchHeader() {
+        if (emojiSearchHeader != null) return
+        val theme = theme ?: return
+        // The picker hides itself — search lives outside it.
+        hideEmojiPicker()
+        val header = EmojiSearchHeaderView(
+            context, theme, emojiTracker,
+            onClose = { hideEmojiSearchHeader() },
+            onEmojiPicked = { emoji ->
+                listener?.onText(emoji)
+                hideEmojiSearchHeader()
+            }
+        )
+        emojiSearchHeader = header
+        mainContainer.addView(header, 0, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(SEARCH_HEADER_DP)
+        ))
+        rowsContainer.visibility = VISIBLE
+        requestLayout()
+    }
+
+    fun hideEmojiSearchHeader() {
+        emojiSearchHeader?.let { mainContainer.removeView(it) }
+        emojiSearchHeader = null
+        requestLayout()
+    }
 
     // --- Clipboard manager -----------------------------------------------
 
@@ -633,6 +695,8 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private companion object {
+        /** Height of the emoji search overlay header (query + results strip). */
+        const val SEARCH_HEADER_DP = 104f
         /** Sampling interval for the analog-stick tick. 50 ms ≈ 20 Hz. */
         const val TRACKPAD_TICK_MS = 50L
         /** Radius inside which the cursor doesn't move at all (px-equiv in dp). */
@@ -674,6 +738,38 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun handleKey(key: Key) {
+        // While the emoji search header is mounted the keyboard's char,
+        // letter, space and backspace keys steer the query instead of the
+        // input field; modifier presses still toggle their state so visual
+        // feedback stays consistent. Everything else (Enter, Tab, Esc,
+        // arrows, function keys, layout switches, settings, …) is ignored
+        // to keep the search session focused.
+        emojiSearchHeader?.let { header ->
+            when (key.type) {
+                KeyType.LETTER, KeyType.CHAR -> {
+                    header.appendQuery(key.label)
+                    refresh()
+                    return
+                }
+                KeyType.SPACE -> {
+                    header.appendQuery(" ")
+                    refresh()
+                    return
+                }
+                KeyType.BACKSPACE -> {
+                    header.deleteFromQuery()
+                    refresh()
+                    return
+                }
+                KeyType.SHIFT -> { modifiers.tapShift(); refresh(); return }
+                KeyType.CTRL -> { modifiers.tapCtrl(); refresh(); return }
+                KeyType.ALT -> { modifiers.tapAlt(); refresh(); return }
+                KeyType.META -> { modifiers.tapMeta(); refresh(); return }
+                KeyType.CAPS_LOCK -> { modifiers.toggleCapsLock(); refresh(); return }
+                else -> { refresh(); return }
+            }
+        }
+
         val isModifierToggle = when (key.type) {
             KeyType.SHIFT -> { modifiers.tapShift(); true }
             KeyType.CTRL -> { modifiers.tapCtrl(); true }

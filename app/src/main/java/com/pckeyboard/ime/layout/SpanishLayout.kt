@@ -29,13 +29,13 @@ object SpanishLayout {
         Key.char("0", "=", alt = "}", popup = "}°"),
         Key.char("'", "?", alt = "\\", popup = "\\¿"),
         Key.char("¡", "¿", popup = "~"),
-        Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.5f, repeatable = true)
+        Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, repeatable = true)
     )
 
     // AltGr per HK values-es/donottranslate-altchars.xml: vowels expose
     // their accented equivalents directly under Alt; e also gets €.
     private fun topLetters(): List<Key> = listOf(
-        Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB, weight = 1.5f),
+        Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB),
         Key.letter("q"),
         Key.letter("w"),
         Key.letter("e", alt = "€", popup = "€éèêë"),
@@ -48,7 +48,7 @@ object SpanishLayout {
         Key.letter("p"),
         Key.char("`", "^", popup = "[°"),
         Key.char("+", "*", popup = "]"),
-        Key.char("ç", "Ç", popup = "}", weight = 1.5f)
+        Key.char("ç", "Ç", popup = "}")
     )
 
     private fun homeLetters(): List<Key> = listOf(

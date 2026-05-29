@@ -28,13 +28,13 @@ object GermanLayout {
         Key.char("0", "=", alt = "}", popup = "}°"),
         Key.char("ß", "?", alt = "\\", popup = "\\¿"),
         Key.char("'", "`", popup = "‘’"),
-        Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.5f, repeatable = true)
+        Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, repeatable = true)
     )
 
     // AltGr per HK values-de/donottranslate-altchars.xml: q→@, e→€,
     // m→μ, plus the usual European accent popups on each vowel.
     private fun topLetters(): List<Key> = listOf(
-        Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB, weight = 1.5f),
+        Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB),
         Key.letter("q", alt = "@", popup = "@"),
         Key.letter("w"),
         Key.letter("e", alt = "€", popup = "€éèêë"),
@@ -47,7 +47,7 @@ object GermanLayout {
         Key.letter("p"),
         Key.char("ü", "Ü"),
         Key.char("+", "*", alt = "~", popup = "~"),
-        Key.char("#", "'", popup = "†‡", weight = 1.5f)
+        Key.char("#", "'", popup = "†‡")
     )
 
     private fun homeLetters(): List<Key> = listOf(

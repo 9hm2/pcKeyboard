@@ -31,11 +31,11 @@ object EnglishLayout {
         Key.char("0", ")", popup = "]}"),
         Key.char("-", "_", popup = "–—"),
         Key.char("=", "+", popup = "±≠≈"),
-        Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.5f, repeatable = true)
+        Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, repeatable = true)
     )
 
     private fun topLetters(): List<Key> = listOf(
-        Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB, weight = 1.5f),
+        Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB),
         Key.letter("q"),
         Key.letter("w"),
         Key.letter("e", popup = "èéêëēėę"),
@@ -48,7 +48,7 @@ object EnglishLayout {
         Key.letter("p"),
         Key.char("[", "{", popup = "「【〔"),
         Key.char("]", "}", popup = "」】〕"),
-        Key.char("\\", "|", popup = "¦/", weight = 1.5f)
+        Key.char("\\", "|", popup = "¦/")
     )
 
     private fun homeLetters(): List<Key> = listOf(
