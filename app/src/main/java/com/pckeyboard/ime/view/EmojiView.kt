@@ -12,19 +12,23 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.pckeyboard.ime.theme.KeyboardTheme
 
 /**
- * Full-keyboard emoji picker. Tabs at the top (one per [EmojiCategory]),
- * an 8-column scrollable grid in the middle, and a control row at the
- * bottom with ABC (return to letters), backspace, space and enter.
+ * Full-keyboard emoji picker. Tab row at the top, a swipeable
+ * [ViewPager2] of category pages (each an 8-column scrollable grid) in
+ * the middle, and a control row at the bottom with ABC / backspace /
+ * space / enter.
  *
- * Tap an emoji to commit it via [Listener.onEmoji]; the picker stays
- * open so the user can pick several in a row, just like Gboard.
+ * First page is "Recents", populated from [EmojiUsageTracker]; each
+ * tap on an emoji is recorded so frequently-used emojis float to the
+ * top of the Recents page on the next open.
  */
 class EmojiView(
     context: Context,
-    private val theme: KeyboardTheme
+    private val theme: KeyboardTheme,
+    private val tracker: EmojiUsageTracker
 ) : FrameLayout(context) {
 
     interface Listener {
@@ -37,9 +41,9 @@ class EmojiView(
 
     var listener: Listener? = null
 
-    private val adapter = EmojiAdapter()
+    private val pages: List<EmojiCategoryData> = EmojiCatalog.pages(tracker)
     private val tabButtons = mutableListOf<TextView>()
-    private var currentTabIndex: Int = 0
+    private lateinit var pager: ViewPager2
 
     init {
         setBackgroundColor(theme.backgroundColor)
@@ -49,26 +53,28 @@ class EmojiView(
         }
 
         // 1. Category tab row.
-        val tabRow = LinearLayout(context).apply {
+        val tabBar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.modifierKeyColor)
         }
-        for ((i, cat) in EmojiCategory.entries.withIndex()) {
+        for ((i, cat) in pages.withIndex()) {
             val btn = TextView(context).apply {
                 text = cat.icon
                 gravity = Gravity.CENTER
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                 isClickable = true
                 isFocusable = true
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
-                setOnClickListener { showCategory(i) }
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
+                )
+                setOnClickListener { pager.setCurrentItem(i, true) }
             }
             tabButtons.add(btn)
-            tabRow.addView(btn)
+            tabBar.addView(btn)
         }
         val tabScroller = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
-            addView(tabRow, LinearLayout.LayoutParams(
+            addView(tabBar, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
             ))
@@ -77,14 +83,16 @@ class EmojiView(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(44f)
         ))
 
-        // 2. Scrollable emoji grid.
-        val grid = RecyclerView(context).apply {
-            layoutManager = GridLayoutManager(context, COLUMNS)
-            this.adapter = this@EmojiView.adapter
-            setBackgroundColor(theme.backgroundColor)
-            overScrollMode = OVER_SCROLL_NEVER
+        // 2. Swipeable pager — one RecyclerView per category page.
+        pager = ViewPager2(context).apply {
+            adapter = PagerAdapter()
+            registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+                override fun onPageSelected(position: Int) {
+                    highlightTab(position)
+                }
+            })
         }
-        root.addView(grid, LinearLayout.LayoutParams(
+        root.addView(pager, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))
 
@@ -102,24 +110,18 @@ class EmojiView(
         ))
 
         addView(root)
-        showCategory(0)
+        highlightTab(0)
     }
 
-    private fun showCategory(index: Int) {
-        currentTabIndex = index
+    private fun highlightTab(position: Int) {
         for ((i, btn) in tabButtons.withIndex()) {
-            val active = i == index
+            val active = i == position
             btn.setBackgroundColor(if (active) theme.accentColor else theme.modifierKeyColor)
             btn.setTextColor(if (active) theme.accentTextColor else theme.modifierTextColor)
         }
-        adapter.update(EmojiCategory.entries[index].emojis)
     }
 
-    private fun controlButton(
-        label: String,
-        weight: Float,
-        onClick: () -> Unit
-    ): View {
+    private fun controlButton(label: String, weight: Float, onClick: () -> Unit): View {
         return TextView(context).apply {
             text = label
             gravity = Gravity.CENTER
@@ -135,13 +137,33 @@ class EmojiView(
         }
     }
 
-    private inner class EmojiAdapter : RecyclerView.Adapter<EmojiVH>() {
-        private var emojis: List<String> = emptyList()
+    // --- ViewPager2 adapter: one page == one category's emoji grid -------
 
-        fun update(list: List<String>) {
-            emojis = list
-            notifyDataSetChanged()
+    private inner class PagerAdapter : RecyclerView.Adapter<PageVH>() {
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageVH {
+            val rv = RecyclerView(parent.context).apply {
+                layoutManager = GridLayoutManager(parent.context, COLUMNS)
+                setBackgroundColor(theme.backgroundColor)
+                overScrollMode = OVER_SCROLL_NEVER
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+            return PageVH(rv)
         }
+
+        override fun getItemCount(): Int = pages.size
+
+        override fun onBindViewHolder(holder: PageVH, position: Int) {
+            holder.rv.adapter = GridAdapter(pages[position].emojis)
+        }
+    }
+
+    private class PageVH(val rv: RecyclerView) : RecyclerView.ViewHolder(rv)
+
+    private inner class GridAdapter(private val emojis: List<String>) :
+        RecyclerView.Adapter<EmojiVH>() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): EmojiVH {
             val tv = TextView(context).apply {
@@ -161,6 +183,7 @@ class EmojiView(
             holder.text.text = emoji
             holder.text.setOnClickListener {
                 holder.text.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                tracker.recordUse(emoji)
                 listener?.onEmoji(emoji)
             }
         }

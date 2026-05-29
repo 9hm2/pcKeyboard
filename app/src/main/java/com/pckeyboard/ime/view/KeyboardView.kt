@@ -327,10 +327,12 @@ class KeyboardView @JvmOverloads constructor(
 
     // --- Emoji picker -----------------------------------------------------
 
+    private val emojiTracker = EmojiUsageTracker(context)
+
     fun showEmojiPicker() {
         if (emojiView != null) return
         val theme = theme ?: return
-        val view = EmojiView(context, theme).apply {
+        val view = EmojiView(context, theme, emojiTracker).apply {
             listener = object : EmojiView.Listener {
                 override fun onEmoji(emoji: String) {
                     this@KeyboardView.listener?.onText(emoji)

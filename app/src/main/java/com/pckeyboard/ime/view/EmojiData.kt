@@ -1,13 +1,36 @@
 package com.pckeyboard.ime.view
 
 /**
- * Built-in emoji catalogue grouped into the standard Unicode categories.
- * Kept intentionally small (~40-50 emojis per category) — broad coverage,
- * not encyclopedic. The user can always type a long-press alternate
- * elsewhere for the obscure ones.
+ * One page in the emoji picker.
  */
-enum class EmojiCategory(val icon: String, val emojis: List<String>) {
-    SMILEYS("😀", listOf(
+data class EmojiCategoryData(
+    val icon: String,
+    val emojis: List<String>,
+    /** Whether this page should be refreshed every time the picker is
+     *  re-opened (Recents). Static categories are computed once. */
+    val refreshable: Boolean = false
+)
+
+/**
+ * Built-in emoji catalogue grouped into the standard Unicode categories.
+ * The static lists are intentionally bounded (~50–100 emojis per category)
+ * for broad coverage without bloat. The Recents page is dynamic and
+ * populated at picker-open time from [EmojiUsageTracker].
+ */
+object EmojiCatalog {
+
+    fun pages(tracker: EmojiUsageTracker): List<EmojiCategoryData> = listOf(
+        EmojiCategoryData("🕒", tracker.recents(), refreshable = true),
+        EmojiCategoryData("😀", SMILEYS),
+        EmojiCategoryData("🐶", ANIMALS),
+        EmojiCategoryData("🍎", FOOD),
+        EmojiCategoryData("⚽", ACTIVITIES),
+        EmojiCategoryData("🚗", TRAVEL),
+        EmojiCategoryData("💡", OBJECTS),
+        EmojiCategoryData("❤️", SYMBOLS)
+    )
+
+    private val SMILEYS: List<String> = listOf(
         "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃",
         "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😗", "☺️", "😚",
         "😙", "🥲", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭",
@@ -19,8 +42,9 @@ enum class EmojiCategory(val icon: String, val emojis: List<String>) {
         "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠", "🤬", "👍",
         "👎", "👌", "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉", "👆",
         "🖕", "👇", "👋", "🤚", "🖐", "✋", "🖖", "🙏", "🙌", "👏"
-    )),
-    ANIMALS("🐶", listOf(
+    )
+
+    private val ANIMALS: List<String> = listOf(
         "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯",
         "🦁", "🐮", "🐷", "🐽", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒",
         "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇",
@@ -31,8 +55,9 @@ enum class EmojiCategory(val icon: String, val emojis: List<String>) {
         "🦛", "🦏", "🐪", "🐫", "🦒", "🦘", "🦬", "🐃", "🐂", "🐄",
         "🐎", "🐖", "🐏", "🐑", "🦙", "🐐", "🦌", "🐕", "🐩", "🦮",
         "🐈", "🐈‍⬛", "🐓", "🦃", "🦤", "🦚", "🦜", "🦢", "🦩", "🦝"
-    )),
-    FOOD("🍎", listOf(
+    )
+
+    private val FOOD: List<String> = listOf(
         "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈",
         "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦",
         "🥬", "🥒", "🌶", "🫑", "🌽", "🥕", "🫒", "🧄", "🧅", "🥔",
@@ -44,8 +69,9 @@ enum class EmojiCategory(val icon: String, val emojis: List<String>) {
         "🍦", "🥧", "🧁", "🍰", "🎂", "🍮", "🍭", "🍬", "🍫", "🍿",
         "🍩", "🍪", "🌰", "🥜", "🍯", "🥛", "🍼", "☕", "🍵", "🧃",
         "🥤", "🧋", "🍶", "🍺", "🍻", "🥂", "🍷", "🥃", "🍸", "🍹"
-    )),
-    ACTIVITIES("⚽", listOf(
+    )
+
+    private val ACTIVITIES: List<String> = listOf(
         "⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱",
         "🪀", "🏓", "🏸", "🏒", "🏑", "🥍", "🏏", "🪃", "🥅", "⛳",
         "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🎽", "🛹", "🛷", "⛸",
@@ -55,8 +81,9 @@ enum class EmojiCategory(val icon: String, val emojis: List<String>) {
         "🎟", "🎪", "🤹", "🎭", "🩰", "🎨", "🎬", "🎤", "🎧", "🎼",
         "🎹", "🥁", "🪘", "🎷", "🎺", "🪗", "🎸", "🪕", "🎻", "🎲",
         "♟", "🎯", "🎳", "🎮", "🕹", "🧩", "🧸", "🪅", "🪆"
-    )),
-    TRAVEL("🚗", listOf(
+    )
+
+    private val TRAVEL: List<String> = listOf(
         "🚗", "🚕", "🚙", "🚌", "🚎", "🏎", "🚓", "🚑", "🚒", "🚐",
         "🛻", "🚚", "🚛", "🚜", "🛴", "🚲", "🛵", "🏍", "🛺", "🚨",
         "🚔", "🚍", "🚘", "🚖", "🚡", "🚠", "🚟", "🚃", "🚋", "🚞",
@@ -68,8 +95,9 @@ enum class EmojiCategory(val icon: String, val emojis: List<String>) {
         "⛺", "🏠", "🏡", "🏘", "🏚", "🏗", "🏭", "🏢", "🏬", "🏣",
         "🏤", "🏥", "🏦", "🏨", "🏪", "🏫", "🏩", "💒", "🏛", "⛪",
         "🕌", "🕍", "🛕", "🕋", "⛩", "🌁", "🌃", "🏙", "🌄", "🌅"
-    )),
-    OBJECTS("💡", listOf(
+    )
+
+    private val OBJECTS: List<String> = listOf(
         "💡", "🔦", "🕯", "🪔", "📱", "📲", "💻", "⌨", "🖥", "🖨",
         "🖱", "🖲", "🕹", "🗜", "💽", "💾", "💿", "📀", "📼", "📷",
         "📸", "📹", "🎥", "📽", "🎞", "📞", "☎", "📟", "📠", "📺",
@@ -83,8 +111,9 @@ enum class EmojiCategory(val icon: String, val emojis: List<String>) {
         "🛀", "🧼", "🪥", "🪒", "🧽", "🪣", "🧴", "🛎", "🔑", "🗝",
         "🚪", "🪑", "🛋", "🛏", "🛌", "🧸", "🪞", "🪟", "🛍", "🛒",
         "🎁", "🎈", "🎏", "🎀", "🪄", "🪅", "🎊", "🎉", "🎎", "🏮"
-    )),
-    SYMBOLS("❤️", listOf(
+    )
+
+    private val SYMBOLS: List<String> = listOf(
         "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔",
         "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "☮️",
         "✝️", "☪️", "🕉", "☸️", "✡️", "🔯", "🕎", "☯️", "☦️", "🛐",
@@ -101,5 +130,5 @@ enum class EmojiCategory(val icon: String, val emojis: List<String>) {
         "🎦", "📶", "🈁", "🔣", "ℹ️", "🔤", "🔡", "🔠", "🆖", "🆗",
         "🆙", "🆒", "🆕", "🆓", "0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣",
         "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"
-    ))
+    )
 }
