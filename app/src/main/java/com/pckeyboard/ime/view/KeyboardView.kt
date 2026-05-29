@@ -514,7 +514,11 @@ class KeyboardView @JvmOverloads constructor(
         if (x < 0) x = 0
         if (x + w > width) x = (width - w).coerceAtLeast(0)
         var y = anchorY - h - dp(4f)
-        if (y < 0) y = 0
+        // Don't bleed into the transparent popup zone above the keys —
+        // the action menu is opaque and should stay aligned with the
+        // keyboard area, same as the picker / clipboard overlays.
+        val keysTop = dp(POPUP_ZONE_DP)
+        if (y < keysTop) y = keysTop
 
         val lp = LayoutParams(w, h).apply {
             leftMargin = x
@@ -563,7 +567,11 @@ class KeyboardView @JvmOverloads constructor(
         }
         emojiView = view
         rowsContainer.visibility = INVISIBLE
-        addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        // Offset the overlay below popupZone so it fills only the actual
+        // keys area, not the empty transparent zone above the keyboard.
+        addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
+            topMargin = dp(POPUP_ZONE_DP)
+        })
     }
 
     fun hideEmojiPicker() {
@@ -598,7 +606,11 @@ class KeyboardView @JvmOverloads constructor(
             }
         )
         emojiSearchHeader = header
-        mainContainer.addView(header, 0, LinearLayout.LayoutParams(
+        // Insert at index 1 so the layout order stays:
+        //   0: popupZone (top, transparent)
+        //   1: emojiSearchHeader (when active)
+        //   2: rowsContainer (always)
+        mainContainer.addView(header, 1, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(SEARCH_HEADER_DP)
         ))
         rowsContainer.visibility = VISIBLE
@@ -631,7 +643,9 @@ class KeyboardView @JvmOverloads constructor(
         }
         clipboardView = view
         rowsContainer.visibility = INVISIBLE
-        addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
+            topMargin = dp(POPUP_ZONE_DP)
+        })
     }
 
     fun hideClipboard() {
@@ -756,7 +770,9 @@ class KeyboardView @JvmOverloads constructor(
         // covers the rows by itself, and toggling visibility can trigger
         // ACTION_CANCEL on the still-active space-press gesture, which would
         // immediately tear the trackpad back down.
-        addView(tp, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(tp, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
+            topMargin = dp(POPUP_ZONE_DP)
+        })
     }
 
     /**
