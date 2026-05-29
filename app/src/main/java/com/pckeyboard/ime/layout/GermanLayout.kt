@@ -32,7 +32,11 @@ object GermanLayout {
     )
 
     // AltGr per HK values-de/donottranslate-altchars.xml: q→@, e→€,
-    // m→μ, plus the usual European accent popups on each vowel.
+    // m→μ, plus the usual European accent popups on each vowel. The
+    // a → ä / u → ü / o → ö entries the original table also had are
+    // removed here because ä, ü, ö are already base characters on
+    // their own dedicated keys, so showing them again on a / u / o
+    // would duplicate the bottom-right hint across the layout.
     private fun topLetters(): List<Key> = listOf(
         Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB),
         Key.letter("q", alt = "@", popup = "@"),
@@ -41,9 +45,9 @@ object GermanLayout {
         Key.letter("r"),
         Key.letter("t"),
         Key.letter("z", alt = "ž", popup = "žźż"),
-        Key.letter("u", alt = "ü", popup = "üùúûū"),
+        Key.letter("u", popup = "üùúûū"),
         Key.letter("i", popup = "ïìíîī"),
-        Key.letter("o", alt = "ö", popup = "öòóôõøœ"),
+        Key.letter("o", popup = "öòóôõøœ"),
         Key.letter("p"),
         Key.char("ü", "Ü"),
         Key.char("+", "*", alt = "~", popup = "~"),
@@ -52,7 +56,7 @@ object GermanLayout {
 
     private fun homeLetters(): List<Key> = listOf(
         Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.5f),
-        Key.letter("a", alt = "ä", popup = "äàáâãåæ"),
+        Key.letter("a", popup = "äàáâãåæ"),
         Key.letter("s", alt = "§", popup = "§ßśš"),
         Key.letter("d"),
         Key.letter("f"),

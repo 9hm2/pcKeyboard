@@ -17,7 +17,9 @@ object SpanishLayout {
 
     private fun numberRow(): List<Key> = listOf(
         Key.char("º", "ª", popup = "ºª"),
-        Key.char("1", "!", alt = "|", popup = "|¡"),
+        // 1 → | removed — | already lives on AltGr+< on the LSGT key
+        // (the xkb-canonical Spanish home for the pipe character).
+        Key.char("1", "!", popup = "|¡"),
         Key.char("2", "\"", alt = "@", popup = "@"),
         Key.char("3", "·", alt = "#", popup = "#£"),
         Key.char("4", "$", alt = "~", popup = "~"),
@@ -34,6 +36,9 @@ object SpanishLayout {
 
     // AltGr per HK values-es/donottranslate-altchars.xml: vowels expose
     // their accented equivalents directly under Alt; e also gets €.
+    // The `, +, ç bracket alternatives ([, ], }) are dropped because
+    // those bracket glyphs already live on AltGr+8 / 9 / 0; keeping
+    // them on two keys at once would duplicate the visible hint.
     private fun topLetters(): List<Key> = listOf(
         Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB),
         Key.letter("q"),
@@ -46,9 +51,9 @@ object SpanishLayout {
         Key.letter("i", alt = "í", popup = "íìîï"),
         Key.letter("o", alt = "ó", popup = "óòöôõ"),
         Key.letter("p"),
-        Key.char("`", "^", alt = "[", popup = "[°"),
-        Key.char("+", "*", alt = "]", popup = "]"),
-        Key.char("ç", "Ç", alt = "}", popup = "}")
+        Key.char("`", "^", popup = "[°"),
+        Key.char("+", "*", popup = "]"),
+        Key.char("ç", "Ç", popup = "}")
     )
 
     private fun homeLetters(): List<Key> = listOf(
@@ -67,6 +72,10 @@ object SpanishLayout {
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
     )
 
+    // The < key keeps | as its AltGr (its xkb-canonical home), and the
+    // duplicate AltGr+1 → | up in the number row is therefore dropped.
+    // n → ñ removed because ñ is its own base-character key on the home
+    // row, so showing the hint here would duplicate it.
     private fun bottomLetters(): List<Key> = listOf(
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f),
         Key.char("<", ">", alt = "|", popup = "|≤≥«»"),
@@ -75,7 +84,7 @@ object SpanishLayout {
         Key.letter("c", alt = "ç", popup = "çčć¢"),
         Key.letter("v"),
         Key.letter("b"),
-        Key.letter("n", alt = "ñ", popup = "ñń"),
+        Key.letter("n", popup = "ñń"),
         Key.letter("m", alt = "µ", popup = "µ"),
         Key.char(",", ";", popup = "«‹„"),
         Key.char(".", ":", popup = "…»›"),
