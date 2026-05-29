@@ -714,15 +714,23 @@ class KeyboardView @JvmOverloads constructor(
         if (popupScreenX + popupW > screenWidth) popupScreenX = (screenWidth - popupW).coerceAtLeast(0)
 
         val pw = android.widget.PopupWindow(popup, popupW, popupH).apply {
+            // Must be non-null on many Android versions — passing null
+            // here is the classic "PopupWindow doesn't show" trap. A
+            // transparent ColorDrawable lets the popup window register
+            // with the window manager without painting anything over
+            // the contained view.
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
             // Let the popup draw outside this view's bounds, including
             // above the IME — the whole point of switching to a real
             // window rather than a child View.
             isClippingEnabled = false
             isFocusable = false
-            // The popup is read-only display; touches stay on the
-            // original KeyView and feed in via onKeyPopupMove/Release.
-            isTouchable = false
-            setBackgroundDrawable(null)
+            isOutsideTouchable = true
+            // INPUT_METHOD_NOT_NEEDED stops the system from trying to
+            // resize the IME to fit the popup as if it were a text
+            // editor, which would defeat the floating-above-the-IME
+            // behaviour we want.
+            inputMethodMode = android.widget.PopupWindow.INPUT_METHOD_NOT_NEEDED
         }
         pw.showAtLocation(this, android.view.Gravity.NO_GRAVITY, popupScreenX, popupScreenY)
         popupWindow = pw
