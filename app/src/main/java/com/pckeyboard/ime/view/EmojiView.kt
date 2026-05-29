@@ -37,6 +37,7 @@ class EmojiView(
         fun onBackspace()
         fun onSpace()
         fun onEnter()
+        fun onSearch()
     }
 
     var listener: Listener? = null
@@ -102,8 +103,9 @@ class EmojiView(
             setBackgroundColor(theme.modifierKeyColor)
         }
         controlRow.addView(controlButton("ABC",    1.5f) { listener?.onBack() })
+        controlRow.addView(controlButton("🔍",    1.0f) { listener?.onSearch() })
         controlRow.addView(controlButton("⌫",    1.0f) { listener?.onBackspace() })
-        controlRow.addView(controlButton("space", 5.0f) { listener?.onSpace() })
+        controlRow.addView(controlButton("space", 4.0f) { listener?.onSpace() })
         controlRow.addView(controlButton("⏎",    1.5f) { listener?.onEnter() })
         root.addView(controlRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(46f)

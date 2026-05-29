@@ -152,6 +152,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             ClipboardHistory(this).replace(r.original, r.edited)
             keyboardView?.refreshClipboard()
         }
+        // Same pattern for the emoji search activity.
+        com.pckeyboard.ime.view.EmojiSearchBridge.consume()?.let { emoji ->
+            currentInputConnection?.commitText(emoji, 1)
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -322,6 +326,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val intent = Intent(this, ClipboardEditorActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             .putExtra(ClipboardEditorActivity.EXTRA_TEXT, text)
+        startActivity(intent)
+    }
+
+    override fun onEmojiSearch() {
+        val intent = Intent(this, com.pckeyboard.ime.view.EmojiSearchActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
     }
 

@@ -358,6 +358,10 @@ class KeyboardView @JvmOverloads constructor(
                         Key(0, "", type = KeyType.ENTER), modifiers
                     )
                 }
+                override fun onSearch() {
+                    this@KeyboardView.listener?.onEmojiSearch()
+                    hideEmojiPicker()
+                }
             }
         }
         emojiView = view
@@ -637,5 +641,7 @@ class KeyboardView @JvmOverloads constructor(
         fun onText(text: String)
         /** Open the clipboard editor activity for the given existing entry. */
         fun onClipboardEdit(text: String)
+        /** Open the emoji search activity. */
+        fun onEmojiSearch()
     }
 }
