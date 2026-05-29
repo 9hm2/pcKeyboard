@@ -30,9 +30,9 @@ object HungarianLayout {
         Key.char("7", "=", popup = "`§"),
         Key.char("8", "(", popup = "*[{"),
         Key.char("9", ")", popup = "*]}"),
-        Key.char("ö", "Ö", popup = "˝"),
-        Key.char("ü", "Ü", popup = "-_"),
-        Key.char("ó", "Ó", popup = "=≈"),
+        Key.char("ö", "Ö", alt = "˝", popup = "˝"),
+        Key.char("ü", "Ü", alt = "¨", popup = "¨-_"),
+        Key.char("ó", "Ó", alt = "¸", popup = "¸=≈"),
         Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, repeatable = true)
     )
 
@@ -52,9 +52,9 @@ object HungarianLayout {
         Key.letter("i", popup = "íìîïī"),
         Key.letter("o", popup = "óöőòôõø"),
         Key.letter("p", popup = "π₱§"),
-        Key.char("ő", "Ő", popup = "÷[{"),
-        Key.char("ú", "Ú", popup = "×]}"),
-        Key.char("ű", "Ű", popup = "\\|")
+        Key.char("ő", "Ő", alt = "÷", popup = "÷[{"),
+        Key.char("ú", "Ú", alt = "×", popup = "×]}"),
+        Key.char("ű", "Ű", alt = "¤", popup = "¤\\|")
     )
 
     private fun homeLetters(): List<Key> = listOf(
@@ -68,14 +68,14 @@ object HungarianLayout {
         Key.letter("j", popup = "ĵ"),
         Key.letter("k", alt = "ł", popup = "łŁ"),
         Key.letter("l", alt = "£", popup = "£₤λ"),
-        Key.char("é", "É", popup = "$;:"),
-        Key.char("á", "Á", popup = "ß'\""),
+        Key.char("é", "É", alt = "$", popup = "$;:"),
+        Key.char("á", "Á", alt = "ß", popup = "ß'\""),
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
     )
 
     private fun bottomLetters(): List<Key> = listOf(
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f),
-        Key.char("í", "Í", popup = "<>"),
+        Key.char("í", "Í", alt = "<", popup = "<>"),
         Key.letter("y", alt = ">", popup = ">ÿý¥"),
         Key.letter("x", alt = "#", popup = "#"),
         Key.letter("c", alt = "&", popup = "&çčć¢"),

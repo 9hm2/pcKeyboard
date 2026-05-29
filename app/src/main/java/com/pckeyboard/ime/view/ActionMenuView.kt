@@ -166,4 +166,6 @@ sealed class MenuAction {
     object OpenClipboard : MenuAction()
     /** Launch the keyboard's Settings activity. */
     object OpenSettings : MenuAction()
+    /** Flip the "show function row on narrow screens" preference. */
+    object ToggleFunctionRow : MenuAction()
 }

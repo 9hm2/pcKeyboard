@@ -46,9 +46,9 @@ object SpanishLayout {
         Key.letter("i", alt = "í", popup = "íìîï"),
         Key.letter("o", alt = "ó", popup = "óòöôõ"),
         Key.letter("p"),
-        Key.char("`", "^", popup = "[°"),
-        Key.char("+", "*", popup = "]"),
-        Key.char("ç", "Ç", popup = "}")
+        Key.char("`", "^", alt = "[", popup = "[°"),
+        Key.char("+", "*", alt = "]", popup = "]"),
+        Key.char("ç", "Ç", alt = "}", popup = "}")
     )
 
     private fun homeLetters(): List<Key> = listOf(
@@ -69,7 +69,7 @@ object SpanishLayout {
 
     private fun bottomLetters(): List<Key> = listOf(
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f),
-        Key.char("<", ">", popup = "|≤≥«»"),
+        Key.char("<", ">", alt = "|", popup = "|≤≥«»"),
         Key.letter("z"),
         Key.letter("x"),
         Key.letter("c", alt = "ç", popup = "çčć¢"),

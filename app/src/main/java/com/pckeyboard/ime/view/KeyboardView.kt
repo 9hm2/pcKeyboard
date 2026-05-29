@@ -322,7 +322,9 @@ class KeyboardView @JvmOverloads constructor(
                     isCurrent = pack.id == currentLanguageId && !isEmojiOpen()
                 )
             }
+        val fnRowIcon = if (prefs.showFunctionRow) "☑" else "☐"
         val items = langItems + listOf(
+            MenuItem(fnRowIcon, "Function row (Esc, F1…)", MenuAction.ToggleFunctionRow),
             MenuItem("😀", "Emoji",            MenuAction.OpenEmoji),
             MenuItem("📋", "Clipboard",        MenuAction.OpenClipboard),
             MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings)

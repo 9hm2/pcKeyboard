@@ -55,6 +55,16 @@ class KeyboardPrefs(context: Context) {
         }
 
     /**
+     * Force the F-key / Esc / Home / End row to be shown even on narrow
+     * screens that would normally drop it to save vertical space. The
+     * globe long-press menu offers a one-tap toggle for this so the user
+     * can opt in to the full PC layout on a regular phone width.
+     */
+    var showFunctionRow: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_FN_ROW, false)
+        set(value) { prefs.edit().putBoolean(KEY_SHOW_FN_ROW, value).apply() }
+
+    /**
      * Multiplier applied to the space-trackpad's cursor speed (both axes).
      * 1.0 keeps the analog curve's default; values below 1.0 slow the cursor
      * down for finer placement, values above 1.0 speed it up for long jumps.
@@ -104,6 +114,7 @@ class KeyboardPrefs(context: Context) {
         private const val KEY_SPLIT_GAP = "kb_split_gap_weight"
         private const val KEY_LP_DELAY = "kb_long_press_delay_ms"
         private const val KEY_TRACKPAD_SENS = "kb_trackpad_sensitivity"
+        private const val KEY_SHOW_FN_ROW = "kb_show_function_row"
         private const val KEY_LANG = "kb_current_language"
         private const val KEY_ENABLED_LANGS = "kb_enabled_languages"
         private const val KEY_AUTO_UPDATE = "kb_auto_update_enabled"

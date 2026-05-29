@@ -191,7 +191,11 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             else -> pack.main
         }
         val widthDp = (resources.displayMetrics.widthPixels / resources.displayMetrics.density).toInt()
-        val variant = LayoutSelector.pick(widthDp)
+        // If the user has flipped "show function row" in the globe menu,
+        // keep the full PC layout even on narrow phones that would
+        // otherwise drop the F-key row.
+        val variant = if (KeyboardPrefs(this).showFunctionRow) com.pckeyboard.ime.layout.LayoutVariant.FULL
+                      else LayoutSelector.pick(widthDp)
         val finalLayout = withLanguageLabel(
             LayoutSelector.apply(base, variant),
             languageLabelFor(currentLayoutId)
@@ -327,6 +331,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                 val intent = Intent(this, SettingsActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
+            }
+            MenuAction.ToggleFunctionRow -> {
+                kbPrefs.showFunctionRow = !kbPrefs.showFunctionRow
+                bindCurrentLayout()
             }
         }
     }
