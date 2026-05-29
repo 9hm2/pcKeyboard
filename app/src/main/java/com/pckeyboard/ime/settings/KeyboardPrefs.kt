@@ -55,6 +55,17 @@ class KeyboardPrefs(context: Context) {
         }
 
     /**
+     * Which action the slot immediately to the right of Space performs.
+     * Currently supported: "symbols" (default — flips into the 123 page),
+     * "emoji" (opens the emoji picker directly). The key renders the
+     * matching label ("123" or "😀") so the user sees what tapping it
+     * will do.
+     */
+    var rightOfSpaceAction: String
+        get() = prefs.getString(KEY_RIGHT_OF_SPACE, RIGHT_OF_SPACE_SYMBOLS) ?: RIGHT_OF_SPACE_SYMBOLS
+        set(value) { prefs.edit().putString(KEY_RIGHT_OF_SPACE, value).apply() }
+
+    /**
      * Distinct from [splitEnabled] / [splitGapWeight] (which only add a
      * small centre gap on wide tablet screens). When this is on, the
      * keyboard is rendered as a true "side-split" — every row is broken
@@ -132,8 +143,12 @@ class KeyboardPrefs(context: Context) {
         private const val KEY_TRACKPAD_SENS = "kb_trackpad_sensitivity"
         private const val KEY_SHOW_FN_ROW = "kb_show_function_row"
         private const val KEY_SIDE_SPLIT = "kb_side_split_enabled"
+        private const val KEY_RIGHT_OF_SPACE = "kb_right_of_space_action"
         /** Weight of the big empty centre when sideSplit is on. */
         const val SIDE_SPLIT_GAP_WEIGHT = 5f
+
+        const val RIGHT_OF_SPACE_SYMBOLS = "symbols"
+        const val RIGHT_OF_SPACE_EMOJI = "emoji"
         private const val KEY_LANG = "kb_current_language"
         private const val KEY_ENABLED_LANGS = "kb_enabled_languages"
         private const val KEY_AUTO_UPDATE = "kb_auto_update_enabled"

@@ -173,6 +173,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.hideEmojiPicker()
         keyboardView?.hideEmojiSearchHeader()
         keyboardView?.hideClipboard()
+        // Drop any sticky / locked modifier state — Shift, Ctrl, Alt,
+        // Caps Lock, etc. — so reopening the keyboard never lands the
+        // user in some "still locked from last session" surprise.
+        keyboardView?.resetModifiers()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -230,11 +234,35 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // otherwise drop the F-key row.
         val variant = if (KeyboardPrefs(this).showFunctionRow) com.pckeyboard.ime.layout.LayoutVariant.FULL
                       else LayoutSelector.pick(widthDp)
-        val finalLayout = withLanguageLabel(
-            LayoutSelector.apply(base, variant),
-            languageLabelFor(currentLayoutId)
+        val finalLayout = withRightOfSpaceAction(
+            withLanguageLabel(
+                LayoutSelector.apply(base, variant),
+                languageLabelFor(currentLayoutId)
+            ),
+            kbPrefs.rightOfSpaceAction
         )
         view.bind(finalLayout, themeRepo.getSelectedTheme())
+    }
+
+    /** Rewrites the control-row "123" SYMBOL_SWITCH key into whatever the
+     *  user picked in Settings for the slot to the right of Space. */
+    private fun withRightOfSpaceAction(
+        layout: KeyboardLayout,
+        action: String
+    ): KeyboardLayout {
+        if (action == KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS) return layout
+        val newRows = layout.rows.map { row ->
+            row.map { key ->
+                if (key.type == KeyType.SYMBOL_SWITCH && key.label == "123") {
+                    when (action) {
+                        KeyboardPrefs.RIGHT_OF_SPACE_EMOJI ->
+                            Key.fn("😀", KeyType.EMOJI, weight = key.widthWeight)
+                        else -> key
+                    }
+                } else key
+            }
+        }
+        return layout.copy(rows = newRows)
     }
 
     /** Rewrites the LANGUAGE_SWITCH key's label so the globe shows the
@@ -277,6 +305,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             KeyType.SYMBOL_SWITCH -> switchSymbols()
             KeyType.LAYOUT_SWITCH -> switchSymbolsShift()
             KeyType.LANGUAGE_SWITCH -> cycleLanguage()
+            KeyType.EMOJI -> keyboardView?.showEmojiPicker()
             KeyType.HIDE -> requestHideSelf(0)
             KeyType.LETTER, KeyType.CHAR -> {
                 val c = pickChar(key, modifiers)

@@ -16,7 +16,7 @@ import com.pckeyboard.ime.model.LayoutMode
  *  - Row 2 (Top letters):  Tab + q-p + [ ] \             (locale-specific)
  *  - Row 3 (Home letters): Caps + a-l + ... + Enter      (locale-specific)
  *  - Row 4 (Bottom):       ⇧ + < + z-m + , . / + ↑ + ⇧  (locale-specific)
- *  - Row 5 (Control):      Ctrl 🌐 Win Alt 123 Space ◀ ▼ ▶
+ *  - Row 5 (Control):      Ctrl 🌐 Alt Space 123 ◀ ▼ ▶
  *
  * Every row totals weight 14 so a "1-unit" key is the same width in any
  * row. The control row's ▼ at cumulative weight 12.5 sits directly under
@@ -71,10 +71,12 @@ internal object LayoutBlocks {
      * Ctrl below the left Shift, which is what was requested.
      */
     fun controlRow(): List<Key> = listOf(
-        Key.fn("Ctrl",  KeyType.CTRL, sticky = true, weight = 1.0f),
-        Key.fn("🌐",   KeyType.LANGUAGE_SWITCH, weight = 1.0f),
-        Key.fn("Win",   KeyType.META, sticky = true, weight = 1.0f),
-        Key.fn("Alt",   KeyType.ALT,  sticky = true, weight = 1.0f),
+        // Win is intentionally absent — its weight is redistributed
+        // equally to Ctrl, the language switcher and Alt so the cluster
+        // grows into the vacated space instead of leaving a hole.
+        Key.fn("Ctrl",  KeyType.CTRL, sticky = true, weight = 4f / 3f),
+        Key.fn("🌐",   KeyType.LANGUAGE_SWITCH, weight = 4f / 3f),
+        Key.fn("Alt",   KeyType.ALT,  sticky = true, weight = 4f / 3f),
         Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 6.0f),
         Key.fn("123",   KeyType.SYMBOL_SWITCH, weight = 1.0f),
         Key.fn("◀",    KeyType.ARROW_LEFT,  KeyEvent.KEYCODE_DPAD_LEFT,  repeatable = true),

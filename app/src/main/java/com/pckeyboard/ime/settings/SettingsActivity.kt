@@ -231,6 +231,20 @@ class SettingsActivity : AppCompatActivity() {
             prefs.trackpadSensitivity = v
             binding.trackpadSensValue.text = formatSensitivity(v)
         })
+
+        // Right-of-Space slot: pick between "123" (symbols) and "😀" (emoji).
+        val checkedId = when (prefs.rightOfSpaceAction) {
+            KeyboardPrefs.RIGHT_OF_SPACE_EMOJI -> R.id.rightOfSpaceEmoji
+            else -> R.id.rightOfSpaceSymbols
+        }
+        binding.rightOfSpaceGroup.check(checkedId)
+        binding.rightOfSpaceGroup.addOnButtonCheckedListener { _, id, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            prefs.rightOfSpaceAction = when (id) {
+                R.id.rightOfSpaceEmoji -> KeyboardPrefs.RIGHT_OF_SPACE_EMOJI
+                else -> KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS
+            }
+        }
     }
 
     private fun sensitivityToProgress(v: Float): Int =

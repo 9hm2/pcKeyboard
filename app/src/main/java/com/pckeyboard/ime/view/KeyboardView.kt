@@ -152,6 +152,14 @@ class KeyboardView @JvmOverloads constructor(
         }
     }
 
+    /** Clears any ONCE / LOCKED state on every modifier (Shift, Ctrl,
+     *  Alt, Caps, …). Called from the IME service on input dismiss so
+     *  the next session starts fresh. */
+    fun resetModifiers() {
+        modifiers.reset()
+        refresh()
+    }
+
     fun refresh() {
         forEachKeyView { it.invalidate() }
     }
