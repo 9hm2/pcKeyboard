@@ -208,4 +208,6 @@ sealed class MenuAction {
     object ToggleFunctionRow : MenuAction()
     /** Flip the "side-split" (left half + gap + right half) preference. */
     object ToggleSideSplit : MenuAction()
+    /** Open the system speech-recognition overlay anchored to the IME. */
+    object OpenVoiceInput : MenuAction()
 }

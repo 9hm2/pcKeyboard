@@ -68,6 +68,9 @@ class KeyboardView @JvmOverloads constructor(
     // Emoji picker overlay shown via the action menu "Emoji" item.
     private var emojiView: EmojiView? = null
 
+    // Voice input overlay shown via the action menu "Voice input" item.
+    private var voiceInputView: VoiceInputView? = null
+
     // Emoji search slim header — when present, sits inside mainContainer
     // above the keyboard rows; KeyboardView funnels char/letter/space/
     // backspace presses into its query while it's mounted.
@@ -487,6 +490,7 @@ class KeyboardView @JvmOverloads constructor(
         // without a manifest change.
         val items = langItems + listOf(
             MenuItem(fnRowIcon, "Function row (Esc, F1…)", MenuAction.ToggleFunctionRow),
+            MenuItem("🎤", "Voice input",       MenuAction.OpenVoiceInput),
             MenuItem("😀", "Emoji",            MenuAction.OpenEmoji),
             MenuItem("📋", "Clipboard",        MenuAction.OpenClipboard),
             MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings)
@@ -575,6 +579,46 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     fun isEmojiOpen(): Boolean = emojiView != null
+
+    // --- Voice input overlay --------------------------------------------
+
+    /**
+     * Mounts a [VoiceInputView] over the keys area. The view drives
+     * Android's [android.speech.SpeechRecognizer] in [recognitionLocale]
+     * and commits the final transcript back via [Listener.onText].
+     *
+     * If RECORD_AUDIO isn't granted yet, the view shows a hint and the
+     * mic button opens this app's permission page (so the user can
+     * grant it from there — an IME service can't request runtime
+     * permissions directly).
+     */
+    fun showVoiceInput(recognitionLocale: String) {
+        if (voiceInputView != null) return
+        val theme = theme ?: return
+        val view = VoiceInputView(
+            context, theme,
+            recognitionLocale = recognitionLocale,
+            onText = { transcript ->
+                this@KeyboardView.listener?.onText(transcript)
+                hideVoiceInput()
+            },
+            onClose = { hideVoiceInput() },
+            onOpenAppSettings = {
+                this@KeyboardView.listener?.onOpenAppSettings()
+            }
+        )
+        voiceInputView = view
+        rowsContainer.visibility = INVISIBLE
+        addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
+            topMargin = dp(POPUP_ZONE_DP)
+        })
+    }
+
+    fun hideVoiceInput() {
+        voiceInputView?.let { removeView(it) }
+        voiceInputView = null
+        rowsContainer.visibility = VISIBLE
+    }
 
     // --- Emoji search header (full-keyboard search) ----------------------
 
@@ -954,5 +998,9 @@ class KeyboardView @JvmOverloads constructor(
         fun onText(text: String)
         /** Open the clipboard editor activity for the given existing entry. */
         fun onClipboardEdit(text: String)
+        /** Open this app's system "App info" page so the user can grant
+         *  RECORD_AUDIO from there. IME services can't request runtime
+         *  permissions directly, hence the deep-link. */
+        fun onOpenAppSettings()
     }
 }

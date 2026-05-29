@@ -79,4 +79,12 @@
     <string name="clip_editor_hint">Edit, then tap Send to commit.</string>
     <string name="emoji_search_hint">Type any English keyword (smile, heart, dog, fire, …)</string>
     <string name="emoji_search_no_results">No emoji matches \"%1$s\".</string>
+
+    <string name="voice_tap_to_speak">Tap the mic to speak</string>
+    <string name="voice_listening">Listening…</string>
+    <string name="voice_permission_missing">Microphone permission needed — tap mic to open app settings</string>
+    <string name="voice_not_available">Speech recognition is not available on this device</string>
+    <string name="voice_error_network">Network error — check connection</string>
+    <string name="voice_error_no_match">Didn\'t catch that — tap mic to try again</string>
+    <string name="voice_error_generic">Recognition error (code %1$d)</string>
 </resources>

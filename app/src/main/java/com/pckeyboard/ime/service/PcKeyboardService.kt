@@ -173,6 +173,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.hideEmojiPicker()
         keyboardView?.hideEmojiSearchHeader()
         keyboardView?.hideClipboard()
+        keyboardView?.hideVoiceInput()
         // Drop any sticky / locked modifier state — Shift, Ctrl, Alt,
         // Caps Lock, etc. — so reopening the keyboard never lands the
         // user in some "still locked from last session" surprise.
@@ -413,7 +414,33 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                 kbPrefs.sideSplitEnabled = !kbPrefs.sideSplitEnabled
                 bindCurrentLayout()
             }
+            MenuAction.OpenVoiceInput -> {
+                keyboardView?.showVoiceInput(recognitionLocaleFor(currentLayoutId))
+            }
         }
+    }
+
+    /** Maps a `LayoutPack` id (e.g. "hu_HU") to the BCP-47 language tag
+     *  used by [android.speech.RecognizerIntent.EXTRA_LANGUAGE]. */
+    private fun recognitionLocaleFor(id: String): String = when (id) {
+        "en_US" -> "en-US"
+        "hu_HU" -> "hu-HU"
+        "de_DE" -> "de-DE"
+        "es_ES" -> "es-ES"
+        else    -> "en-US"
+    }
+
+    override fun onOpenAppSettings() {
+        // Deep-link straight to this app's "App info" page so the user
+        // can grant RECORD_AUDIO from there — IMEs can't trigger the
+        // runtime permission dialog directly.
+        try {
+            startActivity(
+                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:$packageName"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (_: Throwable) { /* fall through */ }
     }
 
     override fun onClipboardEdit(text: String) {
