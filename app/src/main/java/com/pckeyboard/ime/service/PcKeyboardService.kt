@@ -257,12 +257,22 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                 val text = clip.getItemAt(0)?.coerceToText(this)?.toString() ?: return
                 if (text.isNotEmpty()) currentInputConnection?.commitText(text, 1)
             }
+            MenuAction.OpenEmoji -> {
+                keyboardView?.showEmojiPicker()
+            }
             MenuAction.OpenSettings -> {
                 val intent = Intent(this, SettingsActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
             }
         }
+    }
+
+    /** Multi-codepoint commits (emoji, etc.) that don't fit through a single
+     *  KeyEvent. Goes through commitText directly. */
+    override fun onText(text: String) {
+        if (text.isEmpty()) return
+        currentInputConnection?.commitText(text, 1)
     }
 
     /**

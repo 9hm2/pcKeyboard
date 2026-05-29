@@ -49,6 +49,9 @@ class KeyboardView @JvmOverloads constructor(
     // Globe long-press: vertical action menu, same touch routing pattern.
     private var actionMenuView: ActionMenuView? = null
 
+    // Emoji picker overlay shown via the action menu "Emoji" item.
+    private var emojiView: EmojiView? = null
+
     // Space-trackpad state.
     private var trackpadView: TrackpadView? = null
     private var trackpadActive: Boolean = false
@@ -279,6 +282,7 @@ class KeyboardView @JvmOverloads constructor(
                 isCurrent = currentLanguageId == "de_DE"))
             add(MenuItem("🌐", "Español  (ES)", MenuAction.SwitchLanguage("es_ES"),
                 isCurrent = currentLanguageId == "es_ES"))
+            add(MenuItem("😀", "Emoji",            MenuAction.OpenEmoji))
             add(MenuItem("📋", "Paste clipboard",  MenuAction.PasteClipboard))
             add(MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings))
         }
@@ -319,6 +323,45 @@ class KeyboardView @JvmOverloads constructor(
     private fun dismissActionMenu() {
         actionMenuView?.let { removeView(it) }
         actionMenuView = null
+    }
+
+    // --- Emoji picker -----------------------------------------------------
+
+    fun showEmojiPicker() {
+        if (emojiView != null) return
+        val theme = theme ?: return
+        val view = EmojiView(context, theme).apply {
+            listener = object : EmojiView.Listener {
+                override fun onEmoji(emoji: String) {
+                    this@KeyboardView.listener?.onText(emoji)
+                }
+                override fun onBack() = hideEmojiPicker()
+                override fun onBackspace() {
+                    this@KeyboardView.listener?.onKey(
+                        Key(0, "", type = KeyType.BACKSPACE), modifiers
+                    )
+                }
+                override fun onSpace() {
+                    this@KeyboardView.listener?.onKey(
+                        Key(' '.code, " ", type = KeyType.SPACE), modifiers
+                    )
+                }
+                override fun onEnter() {
+                    this@KeyboardView.listener?.onKey(
+                        Key(0, "", type = KeyType.ENTER), modifiers
+                    )
+                }
+            }
+        }
+        emojiView = view
+        rowsContainer.visibility = INVISIBLE
+        addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    fun hideEmojiPicker() {
+        emojiView?.let { removeView(it) }
+        emojiView = null
+        rowsContainer.visibility = VISIBLE
     }
 
     // --- Alternate-char popup ---------------------------------------------
@@ -467,6 +510,7 @@ class KeyboardView @JvmOverloads constructor(
         dismissPopup()
         dismissActionMenu()
         endTrackpad()
+        hideEmojiPicker()
         super.onDetachedFromWindow()
     }
 
@@ -522,5 +566,7 @@ class KeyboardView @JvmOverloads constructor(
         fun onCursorMove(dx: Int, dy: Int)
         /** Globe long-press action menu selection. */
         fun onMenuAction(action: MenuAction)
+        /** Commit a literal string (used for multi-codepoint emoji). */
+        fun onText(text: String)
     }
 }
