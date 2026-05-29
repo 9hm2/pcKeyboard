@@ -298,19 +298,39 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             KeyType.DELETE -> sendKey(KeyEvent.KEYCODE_FORWARD_DEL, modifiers)
             KeyType.TAB -> sendKey(KeyEvent.KEYCODE_TAB, modifiers)
             KeyType.ESC -> sendKey(KeyEvent.KEYCODE_ESCAPE, modifiers)
-            // Arrow keys move the cursor via InputConnection.setSelection
-            // rather than DPAD KeyEvents, otherwise the system / launcher /
-            // foldable window manager may steal the event for navigation
-            // (selecting the floating-window grab handle, moving focus to
-            // a sibling Send button, etc.).
-            KeyType.ARROW_LEFT -> moveCursor(-1, 0, modifiers)
-            KeyType.ARROW_RIGHT -> moveCursor(1, 0, modifiers)
-            KeyType.ARROW_UP -> moveCursor(0, -1, modifiers)
-            KeyType.ARROW_DOWN -> moveCursor(0, 1, modifiers)
-            KeyType.HOME -> moveCursor(Int.MIN_VALUE, 0, modifiers)
-            KeyType.END -> moveCursor(Int.MAX_VALUE, 0, modifiers)
-            KeyType.PAGE_UP -> moveCursor(0, -PAGE_LINES, modifiers)
-            KeyType.PAGE_DOWN -> moveCursor(0, PAGE_LINES, modifiers)
+            // Arrow / Home / End / PgUp / PgDn normally move the cursor
+            // via InputConnection.setSelection (so the system / launcher
+            // / foldable window manager can't steal a DPAD event for
+            // navigation: floating-window grab handle, sibling Send
+            // button, etc.). Terminal emulators (Termux, ConnectBot,
+            // etc.) declare TYPE_NULL because they have no Android-side
+            // text-edit model — for those we hand the DPAD KeyEvent
+            // through directly so the terminal can translate it into
+            // its own escape sequence (ESC [ A, …).
+            KeyType.ARROW_LEFT ->
+                if (isTerminalLikeEditor()) sendKey(KeyEvent.KEYCODE_DPAD_LEFT, modifiers)
+                else moveCursor(-1, 0, modifiers)
+            KeyType.ARROW_RIGHT ->
+                if (isTerminalLikeEditor()) sendKey(KeyEvent.KEYCODE_DPAD_RIGHT, modifiers)
+                else moveCursor(1, 0, modifiers)
+            KeyType.ARROW_UP ->
+                if (isTerminalLikeEditor()) sendKey(KeyEvent.KEYCODE_DPAD_UP, modifiers)
+                else moveCursor(0, -1, modifiers)
+            KeyType.ARROW_DOWN ->
+                if (isTerminalLikeEditor()) sendKey(KeyEvent.KEYCODE_DPAD_DOWN, modifiers)
+                else moveCursor(0, 1, modifiers)
+            KeyType.HOME ->
+                if (isTerminalLikeEditor()) sendKey(KeyEvent.KEYCODE_MOVE_HOME, modifiers)
+                else moveCursor(Int.MIN_VALUE, 0, modifiers)
+            KeyType.END ->
+                if (isTerminalLikeEditor()) sendKey(KeyEvent.KEYCODE_MOVE_END, modifiers)
+                else moveCursor(Int.MAX_VALUE, 0, modifiers)
+            KeyType.PAGE_UP ->
+                if (isTerminalLikeEditor()) sendKey(KeyEvent.KEYCODE_PAGE_UP, modifiers)
+                else moveCursor(0, -PAGE_LINES, modifiers)
+            KeyType.PAGE_DOWN ->
+                if (isTerminalLikeEditor()) sendKey(KeyEvent.KEYCODE_PAGE_DOWN, modifiers)
+                else moveCursor(0, PAGE_LINES, modifiers)
             KeyType.INSERT -> { /* no-op — InputConnection has no insert mode */ }
             KeyType.FN -> if (key.keyCode != 0) sendKey(key.keyCode, modifiers)
             KeyType.SYMBOL_SWITCH -> switchSymbols()
@@ -353,6 +373,17 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     private fun commitChar(c: Char) {
         currentInputConnection?.commitText(c.toString(), 1)
+    }
+
+    /** True when the focused editor declares `inputType == TYPE_NULL`,
+     *  which terminals (Termux, ConnectBot, …), game emulators and
+     *  some custom IME-driven views use to signal "I have no Android
+     *  text-edit model; send me raw KeyEvents instead of trying
+     *  InputConnection.commitText / setSelection". */
+    private fun isTerminalLikeEditor(): Boolean {
+        // TYPE_NULL == 0; we also accept missing EditorInfo as a
+        // safer default for those cases (e.g. some immersive apps).
+        return (currentInputEditorInfo?.inputType ?: 0) == 0
     }
 
     private fun sendKey(keyCode: Int, modifiers: ModifierState) {
