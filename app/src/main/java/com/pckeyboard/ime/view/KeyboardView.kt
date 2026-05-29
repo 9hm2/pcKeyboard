@@ -41,22 +41,30 @@ class KeyboardView @JvmOverloads constructor(
         orientation = LinearLayout.VERTICAL
     }
 
-    /** Vertical stack holding [emojiSearchHeader] (optional) and
-     *  [rowsContainer]. Wraps both so the header can push the keyboard
-     *  rows down without overlapping them while emoji search is active. */
+    /** Vertical stack holding [popupTopSpacer], [emojiSearchHeader]
+     *  (optional) and [rowsContainer]. Wraps everything so the search
+     *  header can push the keyboard rows down without overlapping them
+     *  while emoji search is active, and so we can transiently inflate
+     *  the area above the rows to make room for a long-press popup on
+     *  the very top row. */
     private val mainContainer = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
     }
+    /** Invisible spacer at the top of [mainContainer]. Grown by the
+     *  long-press popup when the anchor key is too close to the top of
+     *  the keyboard for the popup to fit above it; onMeasure also adds
+     *  the matching extra height so the keyboard rows don't shrink. */
+    private val popupTopSpacer = View(context)
+    private var popupExtraHeight: Int = 0
 
-    // Long-press popup. Rendered in a dedicated [PopupWindow] anchored to
-    // this view so it can extend OUTSIDE the IME's bounds — that's how
-    // Samsung / Gboard show the alternates floating above the keyboard
-    // even when the pressed key is in the top number row. Touch tracking
-    // still flows through the original KeyView's onTouchEvent + our
-    // onKeyPopupMove / onKeyPopupRelease callbacks, so the user's finger
-    // never has to leave the original key.
+    // Long-press popup rendered as a child of this FrameLayout. We tried
+    // a PopupWindow so the popup could float above the IME, but multiple
+    // window-manager / window-type restrictions in IME context made the
+    // popup invisible on real devices. The child-view approach is
+    // reliable: when the anchor sits too close to the top edge to fit
+    // the popup above, the IME view is grown by [popupExtraHeight] via
+    // [popupTopSpacer] so the popup ends up entirely above the row.
     private var popupView: KeyPopupView? = null
-    private var popupWindow: android.widget.PopupWindow? = null
 
     // Globe long-press: vertical action menu, same touch routing pattern.
     private var actionMenuView: ActionMenuView? = null
@@ -96,6 +104,12 @@ class KeyboardView @JvmOverloads constructor(
 
     init {
         mainContainer.addView(
+            popupTopSpacer,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0
+            )
+        )
+        mainContainer.addView(
             rowsContainer,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
@@ -130,10 +144,10 @@ class KeyboardView @JvmOverloads constructor(
             val base = dp(perRowDp) * rows + dp((theme?.keySpacingDp ?: 3).toFloat()) * (rows + 1)
             // Grow the IME view by the search header height so the full
             // keyboard stays at its normal size while the user is typing
-            // into the emoji search query above it. Long-press popups
-            // float in their own window now (see PopupWindow in showPopup)
-            // so they no longer need any extra IME height.
-            val extra = if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0
+            // into the emoji search query above it. popupExtraHeight is
+            // a transient bump that opens room above the top row for a
+            // long-press popup; it's reset on dismiss.
+            val extra = (if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0) + popupExtraHeight
             val targetHeight = (base * prefs.heightScale).toInt() + extra
             val resolved = if (mode == MeasureSpec.AT_MOST) {
                 minOf(MeasureSpec.getSize(heightMeasureSpec), targetHeight)
@@ -691,55 +705,52 @@ class KeyboardView @JvmOverloads constructor(
         val selfLoc = IntArray(2)
         anchor.getLocationInWindow(anchorLoc)
         getLocationInWindow(selfLoc)
-
-        // Use screen-space coordinates: the popup is going into its own
-        // window, so it can sit ABOVE the IME's bounds (just like
-        // Samsung / Gboard do — the popup floats over the chat input
-        // instead of being trapped in the keyboard area).
-        val anchorScreen = IntArray(2)
-        anchor.getLocationOnScreen(anchorScreen)
-        val anchorCenterScreenX = anchorScreen[0] + anchor.width / 2
+        val anchorX = anchorLoc[0] - selfLoc[0]
+        val anchorY = anchorLoc[1] - selfLoc[1]
+        val anchorCenterX = anchorX + anchor.width / 2
 
         // Centre the BASE cell over the anchor, not the whole popup. That keeps
         // the resting selection on the base char and makes left/right slides
         // map cleanly to neighbouring options.
         val baseCellCenterInPopup = popup.pad + popup.cellWidth * baseIndex + popup.cellWidth / 2f
-        var popupScreenX = (anchorCenterScreenX - baseCellCenterInPopup).toInt()
-        val popupScreenY = anchorScreen[1] - popupH - dp(4f)
+        var popupX = (anchorCenterX - baseCellCenterInPopup).toInt()
+        var popupY = anchorY - popupH - dp(4f)
 
-        // Clamp horizontally inside the screen so the popup never gets
-        // cut off at the edges.
-        val screenWidth = resources.displayMetrics.widthPixels
-        if (popupScreenX < 0) popupScreenX = 0
-        if (popupScreenX + popupW > screenWidth) popupScreenX = (screenWidth - popupW).coerceAtLeast(0)
+        // Clamp horizontally inside the keyboard.
+        if (popupX < 0) popupX = 0
+        if (popupX + popupW > width) popupX = (width - popupW).coerceAtLeast(0)
 
-        val pw = android.widget.PopupWindow(popup, popupW, popupH).apply {
-            // Must be non-null on many Android versions — passing null
-            // here is the classic "PopupWindow doesn't show" trap. A
-            // transparent ColorDrawable lets the popup window register
-            // with the window manager without painting anything over
-            // the contained view.
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
-            // Let the popup draw outside this view's bounds, including
-            // above the IME — the whole point of switching to a real
-            // window rather than a child View.
-            isClippingEnabled = false
-            isFocusable = false
-            isOutsideTouchable = true
-            // INPUT_METHOD_NOT_NEEDED stops the system from trying to
-            // resize the IME to fit the popup as if it were a text
-            // editor, which would defeat the floating-above-the-IME
-            // behaviour we want.
-            inputMethodMode = android.widget.PopupWindow.INPUT_METHOD_NOT_NEEDED
+        // If the anchor is too close to the top of the keyboard for the
+        // popup to fit above, grow the IME view by exactly the missing
+        // amount — popupTopSpacer + onMeasure cooperate. After the grow
+        // the anchor's Y in keyboard-coords shifts down by the same
+        // amount, so popupY can be pinned to 0 and the popup will draw
+        // entirely above the row instead of bleeding onto it.
+        if (popupY < 0) {
+            val needed = -popupY
+            popupExtraHeight = needed
+            popupTopSpacer.layoutParams = popupTopSpacer.layoutParams.apply {
+                height = needed
+            }
+            requestLayout()
+            popupY = 0
         }
-        pw.showAtLocation(this, android.view.Gravity.NO_GRAVITY, popupScreenX, popupScreenY)
-        popupWindow = pw
+
+        val lp = LayoutParams(popupW, popupH).apply {
+            leftMargin = popupX
+            topMargin = popupY
+        }
+        addView(popup, lp)
     }
 
     private fun dismissPopup() {
-        popupWindow?.dismiss()
-        popupWindow = null
+        popupView?.let { removeView(it) }
         popupView = null
+        if (popupExtraHeight != 0) {
+            popupExtraHeight = 0
+            popupTopSpacer.layoutParams = popupTopSpacer.layoutParams.apply { height = 0 }
+            requestLayout()
+        }
     }
 
     // --- Space trackpad ---------------------------------------------------
