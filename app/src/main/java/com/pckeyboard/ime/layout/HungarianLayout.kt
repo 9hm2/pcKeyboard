@@ -20,38 +20,40 @@ import com.pckeyboard.ime.model.KeyboardLayout
 object HungarianLayout {
 
     private fun numberRow(): List<Key> = listOf(
-        Key.char("0", "~", popup = "`"),
-        Key.char("1", "'", popup = "!¡¹"),
-        Key.char("2", "\"", popup = "@²"),
-        Key.char("3", "+", popup = "#³"),
-        Key.char("4", "!", popup = "$€"),
-        Key.char("5", "%", popup = "°"),
-        Key.char("6", "/", popup = "&"),
-        Key.char("7", "=", popup = "`§"),
-        Key.char("8", "(", popup = "*[{"),
-        Key.char("9", ")", popup = "*]}"),
-        Key.char("ö", "Ö", alt = "˝", popup = "˝"),
-        Key.char("ü", "Ü", alt = "¨", popup = "¨-_"),
-        Key.char("ó", "Ó", alt = "¸", popup = "¸=≈"),
+        Key.char("0", "~", alt = "<", popup = "<`"),
+        Key.char("1", "'", alt = "~", popup = "~!¡¹"),
+        Key.char("2", "\"", alt = "ˇ", popup = "ˇ@²"),
+        Key.char("3", "+", alt = "^", popup = "^#³"),
+        Key.char("4", "!", alt = "˘", popup = "˘$€"),
+        Key.char("5", "%", alt = "°", popup = "°"),
+        Key.char("6", "/", alt = "˛", popup = "˛&"),
+        Key.char("7", "=", alt = "`", popup = "`§"),
+        Key.char("8", "(", alt = "˙", popup = "˙*[{"),
+        Key.char("9", ")", alt = "´", popup = "´*]}"),
+        Key.char("ö", "Ö", alt = "0", popup = "0˝"),
+        Key.char("ü", "Ü", alt = "-", popup = "-_¨"),
+        Key.char("ó", "Ó", alt = ".", popup = ".¸=≈"),
         Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, repeatable = true)
     )
 
-    // AltGr glyphs aligned with HK's values-hu/donottranslate-altchars.xml:
-    // q→\, w→|, e→€, z→ž, x→#, c→&, v→@, b→đ, n→}, m→μ, etc. Letters
-    // without a known AltGr (r, t, i, o, p, j, h) are left without alt= so
-    // Alt+key passes through as a META_ALT_ON KeyEvent for app shortcuts.
+    // AltGr layer from the canonical Magyar billentyűzetkiosztás:
+    //   q→\  w→|  e→Ä  r→¶  t→ŧ  z→@  u→€  o→[  p→]  ő→÷  ú→×  ű→¤
+    // Letters where the spec leaves AltGr blank are left without alt= so
+    // Alt+key passes through as a META_ALT_ON KeyEvent for app shortcuts
+    // (Ctrl+Alt+key chords etc.). The popup chars start with the AltGr
+    // glyph so it's also reachable via long-press.
     private fun topLetters(): List<Key> = listOf(
         Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB),
         Key.letter("q", alt = "\\", popup = "\\"),
         Key.letter("w", alt = "|", popup = "|"),
-        Key.letter("e", alt = "€", popup = "€éèêëē"),
-        Key.letter("r", popup = "₹"),
-        Key.letter("t", popup = "₺þ"),
-        Key.letter("z", alt = "ž", popup = "žźż"),
+        Key.letter("e", alt = "Ä", popup = "Ä€éèêëē"),
+        Key.letter("r", alt = "¶", popup = "¶₹"),
+        Key.letter("t", alt = "ŧ", popup = "ŧ₺þ"),
+        Key.letter("z", alt = "@", popup = "@žźż"),
         Key.letter("u", alt = "€", popup = "€úüűùûū"),
         Key.letter("i", popup = "íìîïī"),
-        Key.letter("o", popup = "óöőòôõø"),
-        Key.letter("p", popup = "π₱§"),
+        Key.letter("o", alt = "[", popup = "[óöőòôõø"),
+        Key.letter("p", alt = "]", popup = "]π₱§"),
         Key.char("ő", "Ő", alt = "÷", popup = "÷[{"),
         Key.char("ú", "Ú", alt = "×", popup = "×]}"),
         Key.char("ű", "Ű", alt = "¤", popup = "¤\\|")
@@ -59,15 +61,15 @@ object HungarianLayout {
 
     private fun homeLetters(): List<Key> = listOf(
         Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.5f),
-        Key.letter("a", alt = "ä", popup = "äáàâãåæ"),
-        Key.letter("s", alt = "§", popup = "§ßš"),
-        Key.letter("d", alt = "đ", popup = "đĐ"),
-        Key.letter("f", alt = "[", popup = "[₣"),
+        Key.letter("a", alt = "đ", popup = "đáàâãåæä"),
+        Key.letter("s", alt = "Đ", popup = "Đßš§"),
+        Key.letter("d", alt = "[", popup = "["),
+        Key.letter("f", alt = "]", popup = "]₣"),
         Key.letter("g", alt = "]", popup = "]"),
-        Key.letter("h", popup = "ħ"),
-        Key.letter("j", popup = "ĵ"),
-        Key.letter("k", alt = "ł", popup = "łŁ"),
-        Key.letter("l", alt = "£", popup = "£₤λ"),
+        Key.letter("h", alt = "ł", popup = "łħ"),
+        Key.letter("j", alt = "Ł", popup = "Łĵ"),
+        Key.letter("k", alt = "ł", popup = "ł"),
+        Key.letter("l", alt = "$", popup = "$£₤λ"),
         Key.char("é", "É", alt = "$", popup = "$;:"),
         Key.char("á", "Á", alt = "ß", popup = "ß'\""),
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
@@ -82,10 +84,10 @@ object HungarianLayout {
         Key.letter("v", alt = "@", popup = "@"),
         Key.letter("b", alt = "{", popup = "{đ"),
         Key.letter("n", alt = "}", popup = "}ñń"),
-        Key.letter("m", alt = "µ", popup = "µ"),
-        Key.char(",", "?", popup = "«‹„"),
-        Key.char(".", ":", popup = "…»›"),
-        Key.char("-", "_", popup = "–—"),
+        Key.letter("m", alt = "<", popup = "<µ"),
+        Key.char(",", "?", alt = ";", popup = ";«‹„"),
+        Key.char(".", ":", alt = ">", popup = ">…»›"),
+        Key.char("-", "_", alt = "*", popup = "*–—"),
         Key.fn("▲", KeyType.ARROW_UP, KeyEvent.KEYCODE_DPAD_UP, repeatable = true),
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f)
     )
