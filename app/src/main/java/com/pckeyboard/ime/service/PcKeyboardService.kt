@@ -203,19 +203,29 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onComputeInsets(outInsets: Insets) {
         super.onComputeInsets(outInsets)
         val view = keyboardView ?: return
-        val gap = view.sideSplitGapBounds() ?: return
-        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
-        val region = outInsets.touchableRegion
-        region.setEmpty()
-        // Left strip: from the left edge to the start of the gap.
-        region.union(android.graphics.Rect(0, 0, gap.left, view.height))
-        // Right strip: from the end of the gap to the right edge.
-        region.union(android.graphics.Rect(gap.right, 0, view.width, view.height))
-        // Anything above the rows (search header, etc.) stays touchable
-        // — those rows are outside the gap rect already, but include
-        // the strip explicitly in case the gap doesn't start at y=0.
-        if (gap.top > 0) {
-            region.union(android.graphics.Rect(0, 0, view.width, gap.top))
+        // The KeyboardView is intentionally taller than the visible
+        // keyboard — KeyboardView.POPUP_ZONE_DP at the top is reserved
+        // as a transparent area where long-press popups can draw. Tell
+        // the system the IME's "content" starts only at the top of the
+        // keyboard rows, so the app keeps fitting above the keys and
+        // not above the empty zone above them.
+        val popupZonePx = (resources.displayMetrics.density *
+            com.pckeyboard.ime.view.KeyboardView.POPUP_ZONE_DP).toInt()
+        outInsets.contentTopInsets = popupZonePx
+        outInsets.visibleTopInsets = popupZonePx
+
+        // Side-split mode: carve the middle gap out of the touchable
+        // region so taps in it fall through to whatever app is behind.
+        val gap = view.sideSplitGapBounds()
+        if (gap != null) {
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+            val region = outInsets.touchableRegion
+            region.setEmpty()
+            region.union(android.graphics.Rect(0, 0, gap.left, view.height))
+            region.union(android.graphics.Rect(gap.right, 0, view.width, view.height))
+            if (gap.top > 0) {
+                region.union(android.graphics.Rect(0, 0, view.width, gap.top))
+            }
         }
     }
 

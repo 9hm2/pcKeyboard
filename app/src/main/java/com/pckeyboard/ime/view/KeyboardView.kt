@@ -48,15 +48,20 @@ class KeyboardView @JvmOverloads constructor(
         orientation = LinearLayout.VERTICAL
     }
 
-    // Long-press popup. Rendered in a dedicated [PopupWindow] anchored to
-    // this view so it can extend OUTSIDE the IME's bounds — that's how
-    // Samsung / Gboard show the alternates floating above the keyboard
-    // even when the pressed key is in the top number row. Touch tracking
-    // still flows through the original KeyView's onTouchEvent + our
-    // onKeyPopupMove / onKeyPopupRelease callbacks, so the user's finger
-    // never has to leave the original key.
+    // Long-press popup. Rendered as a child of this FrameLayout, but the
+    // KeyboardView is intentionally taller than the visible keyboard:
+    // [popupZone] reserves dp(POPUP_ZONE_DP) of transparent space above
+    // the rows so popups can draw there without being clipped, while
+    // PcKeyboardService.onComputeInsets reports a smaller contentTopInset
+    // so the app keeps fitting above the keys (not above the empty zone).
+    // This is the same trick FlorisBoard uses.
     private var popupView: KeyPopupView? = null
-    private var popupWindow: android.widget.PopupWindow? = null
+
+    /** Transparent reserved area at the top of [mainContainer] where the
+     *  long-press popup can draw without being clipped — the IME's
+     *  inset is reported smaller so the app doesn't waste space above
+     *  this zone (it shows through). */
+    private val popupZone = View(context)
 
     // Globe long-press: vertical action menu, same touch routing pattern.
     private var actionMenuView: ActionMenuView? = null
@@ -96,6 +101,12 @@ class KeyboardView @JvmOverloads constructor(
 
     init {
         mainContainer.addView(
+            popupZone,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(POPUP_ZONE_DP)
+            )
+        )
+        mainContainer.addView(
             rowsContainer,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
@@ -110,13 +121,14 @@ class KeyboardView @JvmOverloads constructor(
     fun bind(layout: KeyboardLayout, theme: KeyboardTheme) {
         this.layoutData = layout
         this.theme = theme
-        // In side-split mode leave the view transparent so the empty
-        // middle column shows whatever app is behind the IME (combined
-        // with the transparent IME window set up in PcKeyboardService).
-        // Each KeyView still draws its own opaque background, so the
-        // keys themselves stay solid against the see-through gap.
-        if (prefs.sideSplitEnabled) setBackgroundColor(0)
-        else setBackgroundColor(theme.backgroundColor)
+        // KeyboardView stays transparent so [popupZone] reveals the app
+        // behind the IME. The opaque keyboard background is moved to
+        // rowsContainer so the keys still have a solid backdrop and the
+        // gaps between keys aren't see-through.
+        setBackgroundColor(0)
+        rowsContainer.setBackgroundColor(
+            if (prefs.sideSplitEnabled) 0 else theme.backgroundColor
+        )
         rebuild()
         requestLayout()
     }
@@ -128,12 +140,15 @@ class KeyboardView @JvmOverloads constructor(
             val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
             val perRowDp = if (widthDp >= 600f) 46f else 52f
             val base = dp(perRowDp) * rows + dp((theme?.keySpacingDp ?: 3).toFloat()) * (rows + 1)
-            // Grow the IME view by the search header height so the full
-            // keyboard stays at its normal size while the user is typing
-            // into the emoji search query above it. Long-press popups
-            // float in their own window now (see PopupWindow in showPopup)
-            // so they no longer need any extra IME height.
-            val extra = if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0
+            // The IME view is always taller than the visible keyboard:
+            //  + dp(POPUP_ZONE_DP) reserved at the top as a transparent
+            //    zone where long-press popups can draw without being
+            //    clipped (the matching contentTopInsets stays smaller
+            //    so the app doesn't push above this empty zone).
+            //  + dp(SEARCH_HEADER_DP) when the emoji search bar is up,
+            //    so the keyboard rows keep their normal size.
+            val extra = dp(POPUP_ZONE_DP) +
+                if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0
             val targetHeight = (base * prefs.heightScale).toInt() + extra
             val resolved = if (mode == MeasureSpec.AT_MOST) {
                 minOf(MeasureSpec.getSize(heightMeasureSpec), targetHeight)
@@ -691,54 +706,38 @@ class KeyboardView @JvmOverloads constructor(
         val selfLoc = IntArray(2)
         anchor.getLocationInWindow(anchorLoc)
         getLocationInWindow(selfLoc)
+        val anchorX = anchorLoc[0] - selfLoc[0]
+        val anchorY = anchorLoc[1] - selfLoc[1]
+        val anchorCenterX = anchorX + anchor.width / 2
 
-        // Use screen-space coordinates: the popup is going into its own
-        // window, so it can sit ABOVE the IME's bounds (just like
-        // Samsung / Gboard do — the popup floats over the chat input
-        // instead of being trapped in the keyboard area).
-        val anchorScreen = IntArray(2)
-        anchor.getLocationOnScreen(anchorScreen)
-        val anchorCenterScreenX = anchorScreen[0] + anchor.width / 2
-
-        // Centre the BASE cell over the anchor, not the whole popup. That keeps
-        // the resting selection on the base char and makes left/right slides
-        // map cleanly to neighbouring options.
+        // Centre the BASE cell over the anchor, not the whole popup. That
+        // keeps the resting selection on the base char and makes left/
+        // right slides map cleanly to neighbouring options.
         val baseCellCenterInPopup = popup.pad + popup.cellWidth * baseIndex + popup.cellWidth / 2f
-        var popupScreenX = (anchorCenterScreenX - baseCellCenterInPopup).toInt()
-        val popupScreenY = anchorScreen[1] - popupH - dp(4f)
+        var popupX = (anchorCenterX - baseCellCenterInPopup).toInt()
+        var popupY = anchorY - popupH - dp(4f)
 
-        // Clamp horizontally inside the screen so the popup never gets
-        // cut off at the edges.
-        val screenWidth = resources.displayMetrics.widthPixels
-        if (popupScreenX < 0) popupScreenX = 0
-        if (popupScreenX + popupW > screenWidth) popupScreenX = (screenWidth - popupW).coerceAtLeast(0)
+        // Clamp horizontally inside the keyboard.
+        if (popupX < 0) popupX = 0
+        if (popupX + popupW > width) popupX = (width - popupW).coerceAtLeast(0)
 
-        val pw = android.widget.PopupWindow(popup, popupW, popupH).apply {
-            // Must be non-null on many Android versions — passing null
-            // here is the classic "PopupWindow doesn't show" trap. A
-            // transparent ColorDrawable lets the popup window register
-            // with the window manager without painting anything over
-            // the contained view.
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
-            // Let the popup draw outside this view's bounds, including
-            // above the IME — the whole point of switching to a real
-            // window rather than a child View.
-            isClippingEnabled = false
-            isFocusable = false
-            isOutsideTouchable = true
-            // INPUT_METHOD_NOT_NEEDED stops the system from trying to
-            // resize the IME to fit the popup as if it were a text
-            // editor, which would defeat the floating-above-the-IME
-            // behaviour we want.
-            inputMethodMode = android.widget.PopupWindow.INPUT_METHOD_NOT_NEEDED
+        // popupZone reserves dp(POPUP_ZONE_DP) of empty space at the top
+        // of the IME view, so any popup for a key in the rows fits ABOVE
+        // the row inside that zone — even for the top number row. The
+        // app behind shows through it because the IME window is
+        // transparent and PcKeyboardService.onComputeInsets pretends the
+        // IME is only as tall as the rows themselves.
+        if (popupY < 0) popupY = 0
+
+        val lp = LayoutParams(popupW, popupH).apply {
+            leftMargin = popupX
+            topMargin = popupY
         }
-        pw.showAtLocation(this, android.view.Gravity.NO_GRAVITY, popupScreenX, popupScreenY)
-        popupWindow = pw
+        addView(popup, lp)
     }
 
     private fun dismissPopup() {
-        popupWindow?.dismiss()
-        popupWindow = null
+        popupView?.let { removeView(it) }
         popupView = null
     }
 
@@ -857,7 +856,11 @@ class KeyboardView @JvmOverloads constructor(
         trackpadAccumY = 0f
     }
 
-    private companion object {
+    companion object {
+        /** Transparent reserved space at the top of the IME view for the
+         *  long-press popup to draw into; matched by the service's
+         *  contentTopInsets so the app keeps fitting above the rows. */
+        const val POPUP_ZONE_DP = 90f
         /** Height of the emoji search overlay header (query + results strip). */
         const val SEARCH_HEADER_DP = 104f
         /** Sampling interval for the analog-stick tick. 50 ms ≈ 20 Hz. */
