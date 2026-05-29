@@ -69,8 +69,6 @@
     <string name="clip_editor_send">Send</string>
     <string name="clip_editor_cancel">Cancel</string>
     <string name="clip_editor_hint">Edit, then tap Send to commit.</string>
-    <string name="emoji_search_close">Close</string>
-    <string name="emoji_search_placeholder">Search emoji…</string>
     <string name="emoji_search_hint">Type any English keyword (smile, heart, dog, fire, …)</string>
     <string name="emoji_search_no_results">No emoji matches \"%1$s\".</string>
 </resources>

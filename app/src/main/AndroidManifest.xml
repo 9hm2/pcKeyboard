@@ -44,15 +44,6 @@
             android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
 
         <activity
-            android:name=".view.EmojiSearchActivity"
-            android:exported="false"
-            android:label="@string/emoji_search_placeholder"
-            android:excludeFromRecents="true"
-            android:noHistory="true"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|density"
-            android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
-
-        <activity
             android:name=".editor.ThemeEditorActivity"
             android:exported="false"
             android:label="@string/theme_editor_title"
