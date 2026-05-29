@@ -32,9 +32,12 @@ object HungarianLayout {
         Key.char("7", "=", alt = "`", popup = "`§"),
         Key.char("8", "(", alt = "˙", popup = "˙*[{"),
         Key.char("9", ")", alt = "´", popup = "´*]}"),
-        Key.char("ö", "Ö", alt = "0", popup = "0˝"),
-        Key.char("ü", "Ü", alt = "-", popup = "-_¨"),
-        Key.char("ó", "Ó", alt = ".", popup = ".¸=≈"),
+        // ö / ü / ó use their dead-key AltGr glyphs (xkb hu(basic)) rather
+        // than the spec's `0 - .` — those would duplicate base characters
+        // that already have their own keys on the layout.
+        Key.char("ö", "Ö", alt = "˝", popup = "˝"),
+        Key.char("ü", "Ü", alt = "¨", popup = "¨"),
+        Key.char("ó", "Ó", alt = "¸", popup = "¸=≈"),
         Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, repeatable = true)
     )
 
