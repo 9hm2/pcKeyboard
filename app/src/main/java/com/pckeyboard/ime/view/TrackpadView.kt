@@ -50,7 +50,7 @@ class TrackpadView(
         style = Paint.Style.FILL
     }
 
-    val indicatorRadius: Float = dp(42f).toFloat()
+    val indicatorRadius: Float = dp(56f).toFloat()
 
     private var indicatorCx: Float = 0f
     private var indicatorCy: Float = 0f

@@ -54,6 +54,18 @@ class KeyboardPrefs(context: Context) {
             prefs.edit().putInt(KEY_LP_DELAY, value.coerceIn(150, 1000)).apply()
         }
 
+    /**
+     * Multiplier applied to the space-trackpad's cursor speed (both axes).
+     * 1.0 keeps the analog curve's default; values below 1.0 slow the cursor
+     * down for finer placement, values above 1.0 speed it up for long jumps.
+     * Clamped to [0.3, 3.0].
+     */
+    var trackpadSensitivity: Float
+        get() = prefs.getFloat(KEY_TRACKPAD_SENS, 1.0f).coerceIn(0.3f, 3.0f)
+        set(value) {
+            prefs.edit().putFloat(KEY_TRACKPAD_SENS, value.coerceIn(0.3f, 3.0f)).apply()
+        }
+
     /** The keyboard's currently selected language pack id, e.g. "en_US". */
     var currentLanguage: String
         get() = prefs.getString(KEY_LANG, "en_US") ?: "en_US"
@@ -91,6 +103,7 @@ class KeyboardPrefs(context: Context) {
         private const val KEY_SPLIT = "kb_split_enabled"
         private const val KEY_SPLIT_GAP = "kb_split_gap_weight"
         private const val KEY_LP_DELAY = "kb_long_press_delay_ms"
+        private const val KEY_TRACKPAD_SENS = "kb_trackpad_sensitivity"
         private const val KEY_LANG = "kb_current_language"
         private const val KEY_ENABLED_LANGS = "kb_enabled_languages"
         private const val KEY_AUTO_UPDATE = "kb_auto_update_enabled"

@@ -72,6 +72,10 @@ class KeyboardView @JvmOverloads constructor(
     private var trackpadAccumX: Float = 0f
     private var trackpadAccumY: Float = 0f
     private var trackpadTickRunnable: Runnable? = null
+    /** Sensitivity multiplier captured at arming time so the cursor speed
+     *  stays consistent across a single drag even if the user changes the
+     *  preference in another session. */
+    private var trackpadSensitivity: Float = 1f
 
     init {
         addView(
@@ -556,6 +560,8 @@ class KeyboardView @JvmOverloads constructor(
                 trackpadAnchorY = rawY
                 trackpadCurrentX = rawX
                 trackpadCurrentY = rawY
+                trackpadSensitivity =
+                    com.pckeyboard.ime.settings.KeyboardPrefs(context).trackpadSensitivity
                 tp.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 startTrackpadTick()
             }
@@ -575,9 +581,9 @@ class KeyboardView @JvmOverloads constructor(
                 val dx = trackpadCurrentX - trackpadAnchorX
                 val dy = trackpadCurrentY - trackpadAnchorY
                 trackpadAccumX += analogSpeed(dx, deadZonePx, maxDeflectionPx,
-                    TRACKPAD_MAX_HORIZONTAL_CHARS_PER_SEC) * dtSec
+                    TRACKPAD_MAX_HORIZONTAL_CHARS_PER_SEC * trackpadSensitivity) * dtSec
                 trackpadAccumY += analogSpeed(dy, deadZonePx, maxDeflectionPx,
-                    TRACKPAD_MAX_VERTICAL_LINES_PER_SEC) * dtSec
+                    TRACKPAD_MAX_VERTICAL_LINES_PER_SEC * trackpadSensitivity) * dtSec
                 var dxSteps = 0
                 var dySteps = 0
                 while (trackpadAccumX >=  1f) { dxSteps++; trackpadAccumX -= 1f }

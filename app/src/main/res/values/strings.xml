@@ -29,6 +29,8 @@
     <string name="settings_split_gap">Centre gap</string>
     <string name="settings_long_press_delay">Long-press delay</string>
     <string name="settings_long_press_delay_hint">Applies to every key. Lower = quicker popups &amp; trackpad; higher = fewer accidental triggers.</string>
+    <string name="settings_trackpad_sensitivity">Trackpad sensitivity</string>
+    <string name="settings_trackpad_sensitivity_hint">Speed of the space-long-press cursor trackpad. Lower = finer placement; higher = quicker jumps across long lines.</string>
 
     <string name="theme_editor_title">Theme editor</string>
     <string name="theme_editor_name">Theme name</string>

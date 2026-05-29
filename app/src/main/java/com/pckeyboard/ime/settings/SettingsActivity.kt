@@ -222,7 +222,24 @@ class SettingsActivity : AppCompatActivity() {
             prefs.longPressDelayMs = v
             binding.longPressValue.text = "$v ms"
         })
+
+        // Trackpad sensitivity: 0.3–3.0×, slider in 0.1× steps (0..27 → +0.3).
+        binding.trackpadSensSlider.progress = sensitivityToProgress(prefs.trackpadSensitivity)
+        binding.trackpadSensValue.text = formatSensitivity(prefs.trackpadSensitivity)
+        binding.trackpadSensSlider.setOnSeekBarChangeListener(simpleSeek { p ->
+            val v = progressToSensitivity(p)
+            prefs.trackpadSensitivity = v
+            binding.trackpadSensValue.text = formatSensitivity(v)
+        })
     }
+
+    private fun sensitivityToProgress(v: Float): Int =
+        ((v - 0.3f) / 0.1f).toInt().coerceIn(0, 27)
+
+    private fun progressToSensitivity(p: Int): Float =
+        (0.3f + p * 0.1f).coerceIn(0.3f, 3.0f)
+
+    private fun formatSensitivity(v: Float): String = String.format("%.1f×", v)
 
     private fun formatPercent(v: Float): String = "${(v * 100).toInt()}%"
 
