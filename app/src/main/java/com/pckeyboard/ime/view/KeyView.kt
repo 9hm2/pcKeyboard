@@ -126,6 +126,25 @@ class KeyView(
                 secondaryPaint
             )
         }
+
+        // AltGr hint — drawn at bottom-right of letter / char keys so the
+        // user always knows which key produces which AltGr glyph (held
+        // Alt commits it, long-press also exposes it). Suppressed while
+        // Alt is currently active because the altLabel is already
+        // showing as the main text of the key.
+        if ((key.type == KeyType.LETTER || key.type == KeyType.CHAR)
+            && !isAltActive
+            && key.altLabel != null
+        ) {
+            secondaryPaint.color = theme.secondaryTextColor
+            secondaryPaint.textSize = mainSize * 0.5f
+            canvas.drawText(
+                key.altLabel,
+                rect.centerX() + rect.width() * 0.28f,
+                rect.bottom - dp(6f),
+                secondaryPaint
+            )
+        }
     }
 
     private fun modifierState(): ModifierState.State = when (key.type) {
