@@ -6,12 +6,16 @@ import com.pckeyboard.ime.model.KeyType
 import com.pckeyboard.ime.model.KeyboardLayout
 
 /**
- * Hungarian (HU ISO 105-key, QWERTZ). Matches HK's `values-hu/...keymap.xml`:
- *  - Number row: 0 1-9 ö ü ó   (NOT EN-style ` 1-= — HU has 0 on the left
- *                                and ö ü ó where -, = sit on ANSI)
- *  - Top:        Tab + q-p + ő ú ű    (ű in the bksl slot)
- *  - Home:       Ctrl + a-l + é á + Enter   (11 letter-positions)
- *  - Bottom:     ⇧ + í + y-m + , . - + ↑ + ⇧   (í in the LSGT slot)
+ * Hungarian (HU ISO 105-key, QWERTZ). AltGr glyphs taken from the xkb HU
+ * map (matches HK's values-hu/donottranslate-altchars.xml) and exposed
+ * both as the key's [Key.altLabel] (held-Alt commits this char) and at
+ * the head of [Key.popupChars] so long-press still reveals them.
+ *
+ *  - Number row:    0 1-9 ö ü ó           (NOT EN-style ` 1-= — HU has 0
+ *                                            on the left, ö ü ó on the right)
+ *  - Top:           Tab + q-p ő ú + ű     (ű in the bksl slot)
+ *  - Home:          Ctrl + a-l + é á + Enter
+ *  - Bottom:        ⇧ + í + y-m + , . - + ↑ + ⇧
  */
 object HungarianLayout {
 
@@ -34,16 +38,16 @@ object HungarianLayout {
 
     private fun topLetters(): List<Key> = listOf(
         Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB, weight = 1.5f),
-        Key.letter("q"),
-        Key.letter("w"),
-        Key.letter("e", popup = "éèêëē"),
-        Key.letter("r"),
-        Key.letter("t"),
-        Key.letter("z", popup = "žźż"),
-        Key.letter("u", popup = "úüűùûū"),
+        Key.letter("q", alt = "\\", popup = "\\"),
+        Key.letter("w", alt = "|", popup = "|"),
+        Key.letter("e", alt = "€", popup = "€éèêëē"),
+        Key.letter("r", popup = "Í"),
+        Key.letter("t", alt = "ł", popup = "łŁ"),
+        Key.letter("z", alt = "<", popup = "<žźż"),
+        Key.letter("u", alt = "€", popup = "€úüűùûū"),
         Key.letter("i", popup = "íìîï"),
         Key.letter("o", popup = "óöőòôõø"),
-        Key.letter("p"),
+        Key.letter("p", alt = "§", popup = "§"),
         Key.char("ő", "Ő", popup = "÷[{"),
         Key.char("ú", "Ú", popup = "×]}"),
         Key.char("ű", "Ű", popup = "\\|", weight = 1.5f)
@@ -51,15 +55,15 @@ object HungarianLayout {
 
     private fun homeLetters(): List<Key> = listOf(
         Key.fn("Ctrl", KeyType.CTRL, sticky = true, weight = 1.5f),
-        Key.letter("a", popup = "áàâäãåæ"),
-        Key.letter("s", popup = "śš"),
-        Key.letter("d"),
-        Key.letter("f"),
-        Key.letter("g"),
-        Key.letter("h"),
-        Key.letter("j"),
-        Key.letter("k"),
-        Key.letter("l"),
+        Key.letter("a", alt = "ä", popup = "äáàâãåæ"),
+        Key.letter("s", alt = "đ", popup = "đßśš"),
+        Key.letter("d", alt = "Đ", popup = "Đ"),
+        Key.letter("f", alt = "[", popup = "[₣"),
+        Key.letter("g", alt = "]", popup = "]"),
+        Key.letter("h", alt = ">", popup = ">"),
+        Key.letter("j", alt = "í", popup = "í"),
+        Key.letter("k", alt = "ł", popup = "łŁ"),
+        Key.letter("l", alt = "Ł", popup = "Ł£"),
         Key.char("é", "É", popup = "$;:"),
         Key.char("á", "Á", popup = "ß'\""),
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
@@ -68,13 +72,13 @@ object HungarianLayout {
     private fun bottomLetters(): List<Key> = listOf(
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f),
         Key.char("í", "Í", popup = "<>"),
-        Key.letter("y", popup = "ÿý"),
-        Key.letter("x"),
-        Key.letter("c", popup = "çć"),
-        Key.letter("v"),
-        Key.letter("b"),
-        Key.letter("n", popup = "ñń"),
-        Key.letter("m"),
+        Key.letter("y", alt = ">", popup = ">ÿý"),
+        Key.letter("x", alt = "#", popup = "#"),
+        Key.letter("c", alt = "&", popup = "&çć"),
+        Key.letter("v", alt = "@", popup = "@"),
+        Key.letter("b", alt = "{", popup = "{"),
+        Key.letter("n", alt = "}", popup = "}ñń"),
+        Key.letter("m", alt = "<", popup = "<μ"),
         Key.char(",", "?", popup = "«‹„"),
         Key.char(".", ":", popup = "…»›"),
         Key.char("-", "_", popup = "–—"),

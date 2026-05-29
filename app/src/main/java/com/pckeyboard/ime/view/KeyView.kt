@@ -75,9 +75,9 @@ class KeyView(
 
         val isShifted = modifiers.isShiftActive()
         val isAltActive = modifiers.isAltActive()
-        val altChar = key.popupChars?.takeIf {
+        val altChar = key.altLabel?.takeIf {
             isAltActive && (key.type == KeyType.LETTER || key.type == KeyType.CHAR)
-        }?.substring(0, 1)
+        }
         val mainText = when {
             altChar != null -> if (isShifted) altChar.uppercase() else altChar
             key.type == KeyType.LETTER && isShifted -> key.label.uppercase()

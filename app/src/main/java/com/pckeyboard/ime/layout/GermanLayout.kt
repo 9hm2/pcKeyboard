@@ -17,25 +17,25 @@ object GermanLayout {
     private fun numberRow(): List<Key> = listOf(
         Key.char("^", "°", popup = "^°"),
         Key.char("1", "!", popup = "¹¡"),
-        Key.char("2", "\"", popup = "²"),
-        Key.char("3", "§", popup = "³£"),
+        Key.char("2", "\"", alt = "²", popup = "²"),
+        Key.char("3", "§", alt = "³", popup = "³£"),
         Key.char("4", "$", popup = "¼¢"),
         Key.char("5", "%", popup = "½"),
         Key.char("6", "&", popup = "¬"),
-        Key.char("7", "/", popup = "{"),
-        Key.char("8", "(", popup = "["),
-        Key.char("9", ")", popup = "]"),
-        Key.char("0", "=", popup = "}°"),
-        Key.char("ß", "?", popup = "\\¿"),
+        Key.char("7", "/", alt = "{", popup = "{"),
+        Key.char("8", "(", alt = "[", popup = "["),
+        Key.char("9", ")", alt = "]", popup = "]"),
+        Key.char("0", "=", alt = "}", popup = "}°"),
+        Key.char("ß", "?", alt = "\\", popup = "\\¿"),
         Key.char("'", "`", popup = "‘’"),
         Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.5f, repeatable = true)
     )
 
     private fun topLetters(): List<Key> = listOf(
         Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB, weight = 1.5f),
-        Key.letter("q"),
+        Key.letter("q", alt = "@", popup = "@"),
         Key.letter("w"),
-        Key.letter("e", popup = "éèêë"),
+        Key.letter("e", alt = "€", popup = "€éèêë"),
         Key.letter("r"),
         Key.letter("t"),
         Key.letter("z", popup = "žźż"),
@@ -44,7 +44,7 @@ object GermanLayout {
         Key.letter("o", popup = "öòóôõøœ"),
         Key.letter("p"),
         Key.char("ü", "Ü"),
-        Key.char("+", "*", popup = "~"),
+        Key.char("+", "*", alt = "~", popup = "~"),
         Key.char("#", "'", popup = "†‡", weight = 1.5f)
     )
 
@@ -66,14 +66,14 @@ object GermanLayout {
 
     private fun bottomLetters(): List<Key> = listOf(
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f),
-        Key.char("<", ">", popup = "|≤≥«»"),
+        Key.char("<", ">", alt = "|", popup = "|≤≥«»"),
         Key.letter("y", popup = "ÿý"),
         Key.letter("x"),
         Key.letter("c", popup = "çć"),
         Key.letter("v"),
         Key.letter("b"),
         Key.letter("n", popup = "ñń"),
-        Key.letter("m"),
+        Key.letter("m", alt = "µ", popup = "µ"),
         Key.char(",", ";", popup = "«‹„·"),
         Key.char(".", ":", popup = "…»›"),
         Key.char("-", "_", popup = "–—"),

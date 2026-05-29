@@ -196,9 +196,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             KeyType.HIDE -> requestHideSelf(0)
             KeyType.LETTER, KeyType.CHAR -> {
                 val c = pickChar(key, modifiers)
-                val altAsAltGr = modifiers.isAltActive() && key.popupChars != null
+                val altAsAltGr = modifiers.isAltActive() && key.altLabel != null
                 when {
-                    altAsAltGr -> commitChar(c)        // Alt produces the popup-alt char
+                    altAsAltGr -> commitChar(c)        // Alt produces the layout's AltGr char
                     modifiers.shouldSendAsKeyEvent() -> {
                         val code = androidKeyCodeForChar(c)
                         if (code != 0) sendKey(code, modifiers) else commitChar(c)
@@ -211,12 +211,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     private fun pickChar(key: Key, modifiers: ModifierState): Char {
-        // Alt acts as AltGr on char / letter keys with popup alternates: tap
-        // with Alt held commits the first popup char (e.g. AltGr+E = € when
-        // popup is "€£¥..."). Shift on top capitalises that alt char.
-        if (modifiers.isAltActive() && key.popupChars != null &&
+        // Alt acts as AltGr on char / letter keys that declare an altLabel
+        // (the locale-specific AltGr glyph from the layout). Shift on top
+        // capitalises the alt char where applicable.
+        if (modifiers.isAltActive() && key.altLabel != null &&
             (key.type == KeyType.LETTER || key.type == KeyType.CHAR)) {
-            val ch = key.popupChars[0]
+            val ch = key.altLabel[0]
             return if (modifiers.isShiftActive()) ch.uppercaseChar() else ch
         }
         return when {
