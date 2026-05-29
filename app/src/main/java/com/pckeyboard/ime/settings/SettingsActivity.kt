@@ -13,6 +13,7 @@ import com.pckeyboard.ime.databinding.ActivitySettingsBinding
 import com.pckeyboard.ime.editor.ThemeEditorActivity
 import com.pckeyboard.ime.theme.KeyboardTheme
 import com.pckeyboard.ime.theme.ThemeRepository
+import com.pckeyboard.ime.updater.UpdateScheduler
 import com.pckeyboard.ime.updater.UpdateUi
 
 /**
@@ -61,6 +62,8 @@ class SettingsActivity : AppCompatActivity() {
         binding.installedVersion.text =
             getString(R.string.settings_installed_version, BuildConfig.VERSION_NAME)
         binding.btnCheckUpdates.setOnClickListener { UpdateUi.runManualCheck(this) }
+
+        wireAutoUpdate()
 
         wireSizingControls()
         buildLanguageList()
@@ -116,6 +119,28 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun dpToPx(v: Int): Int =
         (v * resources.displayMetrics.density).toInt()
+
+    private fun wireAutoUpdate() {
+        binding.autoUpdateSwitch.isChecked = prefs.autoUpdateEnabled
+        binding.intervalContainer.alpha = if (prefs.autoUpdateEnabled) 1f else 0.5f
+        binding.intervalToggle.check(
+            if (prefs.autoUpdateIntervalHours == 12) R.id.interval12h else R.id.interval24h
+        )
+
+        binding.autoUpdateSwitch.setOnCheckedChangeListener { _, checked ->
+            prefs.autoUpdateEnabled = checked
+            binding.intervalContainer.alpha = if (checked) 1f else 0.5f
+            UpdateScheduler.schedule(this, replace = true)
+        }
+        binding.intervalToggle.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val hours = if (checkedId == R.id.interval12h) 12 else 24
+            if (hours != prefs.autoUpdateIntervalHours) {
+                prefs.autoUpdateIntervalHours = hours
+                UpdateScheduler.schedule(this, replace = true)
+            }
+        }
+    }
 
     override fun onResume() {
         super.onResume()

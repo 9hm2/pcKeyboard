@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import com.pckeyboard.ime.R
 import com.pckeyboard.ime.databinding.ActivitySetupBinding
+import com.pckeyboard.ime.updater.UpdateScheduler
 import com.pckeyboard.ime.updater.UpdateUi
 
 /**
@@ -38,6 +39,7 @@ class SetupActivity : AppCompatActivity() {
         }
 
         UpdateUi.runAutoCheck(this)
+        UpdateScheduler.schedule(this)
     }
 
     override fun onResume() {

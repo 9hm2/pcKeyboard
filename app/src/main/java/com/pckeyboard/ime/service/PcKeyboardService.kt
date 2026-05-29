@@ -10,6 +10,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputMethodSubtype
 import com.pckeyboard.ime.settings.SettingsActivity
+import com.pckeyboard.ime.updater.UpdateScheduler
 import com.pckeyboard.ime.view.MenuAction
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
@@ -46,6 +47,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // Persisted internally — survives reboots and works regardless of
         // whether the user enabled multiple Android IME subtypes.
         currentLayoutId = kbPrefs.currentLanguage
+        // Kick the periodic update check schedule. Idempotent: WorkManager
+        // keeps the existing entry if one is already enqueued.
+        UpdateScheduler.schedule(this)
     }
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype?) {

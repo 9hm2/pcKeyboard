@@ -69,6 +69,21 @@ class KeyboardPrefs(context: Context) {
             prefs.edit().putStringSet(KEY_ENABLED_LANGS, safe).apply()
         }
 
+    /** Whether the keyboard should auto-download updates in the background
+     *  while it's the default IME. The system installer still asks the user
+     *  to confirm — that's an Android security guarantee, not a setting. */
+    var autoUpdateEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_UPDATE, true)
+        set(value) { prefs.edit().putBoolean(KEY_AUTO_UPDATE, value).apply() }
+
+    /** Interval in hours between auto-update checks (12 or 24). */
+    var autoUpdateIntervalHours: Int
+        get() = prefs.getInt(KEY_AUTO_UPDATE_HOURS, 24).coerceIn(12, 24)
+        set(value) {
+            val safe = if (value <= 12) 12 else 24
+            prefs.edit().putInt(KEY_AUTO_UPDATE_HOURS, safe).apply()
+        }
+
     companion object {
         val ALL_LANG_IDS: Set<String> = setOf("en_US", "hu_HU", "de_DE", "es_ES")
         private const val KEY_HEIGHT = "kb_height_scale"
@@ -78,6 +93,8 @@ class KeyboardPrefs(context: Context) {
         private const val KEY_LP_DELAY = "kb_long_press_delay_ms"
         private const val KEY_LANG = "kb_current_language"
         private const val KEY_ENABLED_LANGS = "kb_enabled_languages"
+        private const val KEY_AUTO_UPDATE = "kb_auto_update_enabled"
+        private const val KEY_AUTO_UPDATE_HOURS = "kb_auto_update_hours"
 
         /** Threshold above which split mode is applied. */
         const val SPLIT_MIN_WIDTH_DP = 600
