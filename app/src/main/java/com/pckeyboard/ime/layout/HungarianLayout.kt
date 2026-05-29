@@ -71,9 +71,10 @@ object HungarianLayout {
         Key.fn("Caps", KeyType.CAPS_LOCK, sticky = true, weight = 1.5f),
         Key.letter("a", alt = "đ", popup = "đáàâãåæä"),
         Key.letter("s", alt = "Đ", popup = "Đßš§"),
-        Key.letter("d", alt = "[", popup = "["),
-        // f's `]` removed — duplicate of g.
-        Key.letter("f", popup = "₣"),
+        // d's `[` removed — moved one slot right to f, the xkb-standard
+        // position. Now d has no AltGr glyph.
+        Key.letter("d", popup = "đĐ"),
+        Key.letter("f", alt = "[", popup = "[₣"),
         Key.letter("g", alt = "]", popup = "]"),
         // h's `ł` removed — duplicate of k.
         Key.letter("h", popup = "ħ"),
