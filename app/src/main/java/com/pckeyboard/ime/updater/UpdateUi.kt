@@ -2,12 +2,18 @@ package com.pckeyboard.ime.updater
 
 import android.content.Intent
 import android.net.Uri
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.pckeyboard.ime.BuildConfig
 import com.pckeyboard.ime.R
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
@@ -57,9 +63,8 @@ object UpdateUi {
                     "\n\n" + notes.take(1000)
             )
             .setPositiveButton(R.string.update_btn_download) { _, _ ->
-                val id = UpdateChecker(activity).downloadApk(info)
-                if (id != null) {
-                    Toast.makeText(activity, R.string.update_downloading, Toast.LENGTH_SHORT).show()
+                if (info.apkUrl != null) {
+                    runDownloadWithProgress(activity, info)
                 } else {
                     activity.startActivity(
                         Intent(Intent.ACTION_VIEW, Uri.parse(info.releasePageUrl))
@@ -73,5 +78,72 @@ object UpdateUi {
                 )
             }
             .show()
+    }
+
+    private fun runDownloadWithProgress(activity: AppCompatActivity, info: UpdateInfo) {
+        // Build a small progress sheet so the user can see the download
+        // grow in-app instead of relying on a system notification.
+        val pad = (activity.resources.displayMetrics.density * 24).toInt()
+        val container = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        val bar = ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = true
+            max = 100
+        }
+        val label = TextView(activity).apply {
+            text = activity.getString(R.string.update_downloading)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, pad / 2)
+        }
+        container.addView(label, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        container.addView(bar, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        val dialog = MaterialAlertDialogBuilder(activity)
+            .setTitle(activity.getString(R.string.update_title, info.versionName))
+            .setView(container)
+            .setCancelable(false)
+            .create()
+        dialog.show()
+
+        activity.lifecycleScope.launch {
+            UpdateDownloader.download(activity, info).collect { state ->
+                if (activity.isFinishing) return@collect
+                when (state) {
+                    is UpdateDownloader.State.Progress -> {
+                        bar.isIndeterminate = false
+                        bar.progress = state.percent
+                        label.text = activity.getString(
+                            R.string.update_download_progress,
+                            state.percent,
+                            formatMb(state.bytesDownloaded),
+                            formatMb(state.totalBytes)
+                        )
+                    }
+                    is UpdateDownloader.State.Done -> {
+                        if (dialog.isShowing) dialog.dismiss()
+                        UpdateDownloader.startInstall(activity, state.file)
+                    }
+                    is UpdateDownloader.State.Error -> {
+                        if (dialog.isShowing) dialog.dismiss()
+                        Toast.makeText(
+                            activity,
+                            activity.getString(R.string.update_download_failed, state.message),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun formatMb(bytes: Long): String {
+        val mb = bytes / 1_048_576.0
+        return String.format("%.1f MB", mb)
     }
 }

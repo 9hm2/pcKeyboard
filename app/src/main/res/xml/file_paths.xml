@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Downloaded update APKs land in the app's private cache directory;
+         FileProvider exposes them via content:// URIs so the system
+         package installer can read them without any storage permission. -->
+    <cache-path name="updates" path="." />
+</paths>

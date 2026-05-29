@@ -5,6 +5,7 @@ import android.provider.Settings
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.pckeyboard.ime.settings.KeyboardPrefs
+import kotlinx.coroutines.flow.collect
 
 /**
  * Periodic background check for new releases. Skips out when the keyboard
@@ -12,9 +13,10 @@ import com.pckeyboard.ime.settings.KeyboardPrefs
  * actually using us), and skips out when the user has switched off
  * autoUpdateEnabled in Settings.
  *
- * When a newer release is found the APK is enqueued via [DownloadManager]
- * (silent download); on completion [UpdateInstallReceiver] fires the
- * system installer to ask the user to confirm the install.
+ * When a newer release is found the APK is streamed into the app's own
+ * cache via [UpdateDownloader]; on completion the worker fires the
+ * system installer through a FileProvider URI so the user just sees the
+ * standard "Update pcKeyboard?" prompt.
  */
 class UpdateCheckWorker(
     context: Context,
@@ -30,21 +32,16 @@ class UpdateCheckWorker(
         val checker = UpdateChecker(ctx)
         val result = checker.checkForUpdate(force = true)
         if (result is UpdateChecker.Result.Available) {
-            val downloadId = checker.downloadApk(result.info)
-            if (downloadId != null) {
-                ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
-                    .edit()
-                    .putLong(KEY_PENDING_ID, downloadId)
-                    .apply()
+            UpdateDownloader.download(ctx, result.info).collect { state ->
+                if (state is UpdateDownloader.State.Done) {
+                    UpdateDownloader.startInstall(ctx, state.file)
+                }
             }
         }
         return Result.success()
     }
 
     companion object {
-        const val STATE_PREFS = "pck_update_state"
-        const val KEY_PENDING_ID = "pending_download_id"
-
         fun isDefaultKeyboard(context: Context): Boolean {
             val current = Settings.Secure.getString(
                 context.contentResolver,

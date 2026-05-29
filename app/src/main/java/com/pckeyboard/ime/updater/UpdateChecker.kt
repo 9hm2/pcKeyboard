@@ -1,9 +1,6 @@
 package com.pckeyboard.ime.updater
 
-import android.app.DownloadManager
 import android.content.Context
-import android.net.Uri
-import android.os.Environment
 import androidx.preference.PreferenceManager
 import com.pckeyboard.ime.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -90,25 +87,6 @@ class UpdateChecker(private val context: Context) {
         } catch (_: Throwable) {
             Result.Error
         }
-    }
-
-    /** Enqueue an APK download via [DownloadManager]. Returns the download id
-     *  (or null if no APK asset is available — caller should open the
-     *  release page instead). */
-    fun downloadApk(info: UpdateInfo): Long? {
-        val url = info.apkUrl ?: return null
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(url)).apply {
-            setTitle("pcKeyboard ${info.versionName}")
-            setDescription("Downloading update")
-            setDestinationInExternalPublicDir(
-                Environment.DIRECTORY_DOWNLOADS,
-                "pckeyboard-${info.versionName}.apk"
-            )
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setMimeType("application/vnd.android.package-archive")
-        }
-        return dm.enqueue(request)
     }
 
     private fun isNewer(latest: String, current: String): Boolean {
