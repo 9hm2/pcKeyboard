@@ -62,6 +62,29 @@ class SettingsActivity : AppCompatActivity() {
         binding.installedVersion.text =
             getString(R.string.settings_installed_version, BuildConfig.VERSION_NAME)
         binding.btnCheckUpdates.setOnClickListener { UpdateUi.runManualCheck(this) }
+        binding.btnInstallPermission.setOnClickListener {
+            // Opens the system "Install unknown apps" page filtered to
+            // this package — the prerequisite that the in-app updater
+            // needs the user to grant. The hint underneath explains the
+            // Samsung Auto Blocker side of the same story.
+            val intent = android.content.Intent(
+                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                android.net.Uri.parse("package:$packageName")
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            try { startActivity(intent) } catch (_: Throwable) {
+                // Fallback: open generic application info for this package
+                // — works on every OEM even when MANAGE_UNKNOWN_APP_SOURCES
+                // isn't reachable directly.
+                try {
+                    startActivity(
+                        android.content.Intent(
+                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.parse("package:$packageName")
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (_: Throwable) { /* nothing more to try */ }
+            }
+        }
 
         wireAutoUpdate()
 
