@@ -54,6 +54,14 @@ class ActionMenuView(
             column.addView(row)
         }
         addView(column, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        // The menu is anchored above the globe key; the user lifts their
+        // finger from the globe onto the menu's BOTTOM edge. Start the
+        // content scrolled to the bottom so the very last item sits at
+        // the bottom — that's the row the finger lands on first, and
+        // sliding up reveals everything above it (auto-scroll in
+        // highlightAt keeps going past the top of the viewport when
+        // there are more items than fit).
+        post { fullScroll(FOCUS_DOWN) }
     }
 
     private fun buildRow(item: MenuItem): TextView {
@@ -103,8 +111,13 @@ class ActionMenuView(
      * Highlight the row whose vertical extent contains the given screen
      * point. Pass coordinates outside the menu bounds to clear the
      * highlight (e.g. while the finger is still on the globe key).
+     *
+     * When the finger lingers near the top or bottom edge of the
+     * viewport, the menu auto-scrolls in that direction so the user can
+     * walk through a list that's longer than what fits on-screen.
      */
     fun highlightAt(rawX: Float, rawY: Float) {
+        autoScrollAt(rawX, rawY)
         val newIdx = rowIndexAt(rawX, rawY)
         if (newIdx == hoveredIndex) return
         if (hoveredIndex in rows.indices) {
@@ -114,6 +127,31 @@ class ActionMenuView(
         if (hoveredIndex in rows.indices) {
             applyHoverStyle(rows[hoveredIndex])
             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        }
+    }
+
+    private fun autoScrollAt(rawX: Float, rawY: Float) {
+        if (width == 0 || height == 0) return
+        val loc = IntArray(2)
+        getLocationOnScreen(loc)
+        val localX = rawX - loc[0]
+        val localY = rawY - loc[1]
+        // Only auto-scroll when the finger is inside the menu's
+        // horizontal extent — otherwise the user is still on the globe.
+        if (localX < 0 || localX > width) return
+        val edge = dp(36f).toFloat()
+        val step = dp(8f)
+        val column = getChildAt(0) ?: return
+        val maxScroll = (column.height - height).coerceAtLeast(0)
+        when {
+            localY in 0f..edge && scrollY > 0 -> {
+                // Near top edge → scroll up (toward beginning of list).
+                scrollBy(0, -step.coerceAtMost(scrollY))
+            }
+            localY in (height - edge)..height.toFloat() && scrollY < maxScroll -> {
+                // Near bottom edge → scroll down (toward end of list).
+                scrollBy(0, step.coerceAtMost(maxScroll - scrollY))
+            }
         }
     }
 
