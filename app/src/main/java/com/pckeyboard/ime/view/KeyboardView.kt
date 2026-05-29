@@ -16,7 +16,6 @@ import com.pckeyboard.ime.model.KeyboardLayout
 import com.pckeyboard.ime.model.ModifierState
 import com.pckeyboard.ime.settings.KeyboardPrefs
 import com.pckeyboard.ime.theme.KeyboardTheme
-import kotlin.math.abs
 
 /**
  * Renders a KeyboardLayout. A vertical [rowsContainer] holds the rows of
@@ -79,21 +78,16 @@ class KeyboardView @JvmOverloads constructor(
     private val clipHistory = com.pckeyboard.ime.clipboard.ClipboardHistory(context)
 
     // Space-trackpad state. After the user slides their finger to the
-    // indicator and "arms" the trackpad, we capture the anchor position;
-    // every tick the deflection from that anchor drives an analog-stick
-    // style speed (with a small dead zone in the centre and a quadratic
-    // ramp so fine control is possible near the anchor without giving up
-    // top speed at the edges).
+    // indicator and "arms" the trackpad. On release the TrackpadView
+    // transitions into a free-touchpad phase where each finger-down on
+    // its surface sets a new origin and subsequent moves emit relative
+    // pixel deltas — handleTrackpadDelta converts those to character /
+    // line steps and forwards them to the IME service.
     private var trackpadView: TrackpadView? = null
     private var trackpadActive: Boolean = false
     private var trackpadArmed: Boolean = false
-    private var trackpadAnchorX: Float = 0f
-    private var trackpadAnchorY: Float = 0f
-    private var trackpadCurrentX: Float = 0f
-    private var trackpadCurrentY: Float = 0f
     private var trackpadAccumX: Float = 0f
     private var trackpadAccumY: Float = 0f
-    private var trackpadTickRunnable: Runnable? = null
     /** Sensitivity multiplier captured at arming time so the cursor speed
      *  stays consistent across a single drag even if the user changes the
      *  preference in another session. */
@@ -428,9 +422,17 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onKeyPopupRelease(view: KeyView) {
         if (trackpadActive) {
-            // Per spec: don't commit Space whether the user armed the trackpad
-            // or not — long-press alone is intent enough to suppress the tap.
-            endTrackpad()
+            // Don't commit Space whether the user armed the trackpad or
+            // not — long-press alone is intent enough to suppress the
+            // tap. If armed, hand off to free touchpad mode so the user
+            // can do real cursor work; if not armed (released without
+            // reaching the indicator), dismiss the trackpad.
+            val tp = trackpadView
+            if (trackpadArmed && tp != null) {
+                tp.phase = TrackpadView.Phase.FREE
+            } else {
+                endTrackpad()
+            }
             return
         }
         actionMenuView?.let { menu ->
@@ -752,12 +754,21 @@ class KeyboardView @JvmOverloads constructor(
     private fun showTrackpad() {
         endTrackpad()
         val theme = theme ?: return
-        val tp = TrackpadView(context, theme)
+        val tp = TrackpadView(
+            context, theme,
+            onCursorDelta = { dxPx, dyPx -> handleTrackpadDelta(dxPx, dyPx) },
+            onClose = { endTrackpad() }
+        )
         trackpadView = tp
         trackpadActive = true
         trackpadArmed = false
         trackpadAccumX = 0f
         trackpadAccumY = 0f
+        // Capture the user's sensitivity preference once so the cursor
+        // speed stays consistent across a single trackpad session even
+        // if Settings is opened in another window mid-use.
+        trackpadSensitivity =
+            com.pckeyboard.ime.settings.KeyboardPrefs(context).trackpadSensitivity
         // Don't toggle rowsContainer visibility: the trackpad's opaque draw
         // covers the rows by itself, and toggling visibility can trigger
         // ACTION_CANCEL on the still-active space-press gesture, which would
@@ -768,94 +779,56 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     /**
-     * After arming, MOVE events just store the latest position; the actual
-     * cursor motion is driven by [trackpadTickRunnable], which samples the
-     * deflection from the armed anchor every [TRACKPAD_TICK_MS] and adds
-     * speed-from-deflection to the accumulators.
+     * Arming-phase MOVE handler. While the user is still dragging from
+     * Space (KeyView owns the gesture), check whether the finger has
+     * crossed into the central indicator — when it has, flip the
+     * trackpad into armed state. The actual cursor-driving touches start
+     * later in [Phase.FREE] once the user releases and re-touches the
+     * trackpad surface.
      */
     private fun handleTrackpadMove(rawX: Float, rawY: Float) {
         val tp = trackpadView ?: return
+        if (tp.phase != TrackpadView.Phase.ARMING) return
+        if (trackpadArmed) return
         val loc = IntArray(2)
         tp.getLocationOnScreen(loc)
         val localX = rawX - loc[0]
         val localY = rawY - loc[1]
-
-        if (!trackpadArmed) {
-            if (tp.isInsideIndicator(localX, localY)) {
-                trackpadArmed = true
-                tp.armed = true
-                trackpadAnchorX = rawX
-                trackpadAnchorY = rawY
-                trackpadCurrentX = rawX
-                trackpadCurrentY = rawY
-                trackpadSensitivity =
-                    com.pckeyboard.ime.settings.KeyboardPrefs(context).trackpadSensitivity
-                tp.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                startTrackpadTick()
-            }
-            return
+        if (tp.isInsideIndicator(localX, localY)) {
+            trackpadArmed = true
+            tp.armed = true
+            tp.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
         }
-        trackpadCurrentX = rawX
-        trackpadCurrentY = rawY
-    }
-
-    private fun startTrackpadTick() {
-        stopTrackpadTick()
-        val deadZonePx = dp(TRACKPAD_DEAD_ZONE_DP).toFloat()
-        val maxDeflectionPx = dp(TRACKPAD_MAX_DEFLECTION_DP).toFloat()
-        val dtSec = TRACKPAD_TICK_MS / 1000f
-        val runnable = object : Runnable {
-            override fun run() {
-                val dx = trackpadCurrentX - trackpadAnchorX
-                val dy = trackpadCurrentY - trackpadAnchorY
-                trackpadAccumX += analogSpeed(dx, deadZonePx, maxDeflectionPx,
-                    TRACKPAD_MAX_HORIZONTAL_CHARS_PER_SEC * trackpadSensitivity) * dtSec
-                trackpadAccumY += analogSpeed(dy, deadZonePx, maxDeflectionPx,
-                    TRACKPAD_MAX_VERTICAL_LINES_PER_SEC * trackpadSensitivity) * dtSec
-                var dxSteps = 0
-                var dySteps = 0
-                while (trackpadAccumX >=  1f) { dxSteps++; trackpadAccumX -= 1f }
-                while (trackpadAccumX <= -1f) { dxSteps--; trackpadAccumX += 1f }
-                while (trackpadAccumY >=  1f) { dySteps++; trackpadAccumY -= 1f }
-                while (trackpadAccumY <= -1f) { dySteps--; trackpadAccumY += 1f }
-                // Route cursor motion through a dedicated callback so the
-                // service moves the cursor with InputConnection.setSelection
-                // instead of DPAD KeyEvents — DPADs can move focus to a
-                // sibling view (e.g. the Send button next to a chat input).
-                if (dxSteps != 0 || dySteps != 0) {
-                    listener?.onCursorMove(dxSteps, dySteps)
-                }
-                handler.postDelayed(this, TRACKPAD_TICK_MS)
-            }
-        }
-        trackpadTickRunnable = runnable
-        handler.postDelayed(runnable, TRACKPAD_TICK_MS)
-    }
-
-    private fun stopTrackpadTick() {
-        trackpadTickRunnable?.let { handler.removeCallbacks(it) }
-        trackpadTickRunnable = null
     }
 
     /**
-     * Maps a signed deflection (px) to a signed speed (units / sec) along
-     * the same axis. Inside the dead zone the speed is zero; outside it
-     * the curve is quadratic, so the first millimetres past the dead zone
-     * produce gentle motion and the cursor only races when the finger is
-     * pushed near the indicator's edge — exactly like an analog stick.
+     * Free-phase handler invoked by [TrackpadView] whenever the user's
+     * finger moves while on the touchpad surface. Converts pixel deltas
+     * to character / line steps using the captured sensitivity, then
+     * forwards whole-unit moves to the IME service.
      */
-    private fun analogSpeed(deflection: Float, deadZone: Float, maxDef: Float, maxSpeed: Float): Float {
-        val absDef = abs(deflection)
-        if (absDef <= deadZone) return 0f
-        val effective = (absDef - deadZone).coerceAtMost(maxDef - deadZone)
-        val maxEffective = (maxDef - deadZone).coerceAtLeast(1f)
-        val normalized = effective / maxEffective
-        val curved = normalized * normalized
-        return if (deflection > 0) curved * maxSpeed else -curved * maxSpeed
+    private fun handleTrackpadDelta(dxPx: Float, dyPx: Float) {
+        val pxPerChar = dp(TRACKPAD_PX_PER_CHAR_DP).toFloat()
+        val pxPerLine = dp(TRACKPAD_PX_PER_LINE_DP).toFloat()
+        val sens = trackpadSensitivity
+        trackpadAccumX += dxPx / pxPerChar * sens
+        trackpadAccumY += dyPx / pxPerLine * sens
+        var dxSteps = 0
+        var dySteps = 0
+        while (trackpadAccumX >=  1f) { dxSteps++; trackpadAccumX -= 1f }
+        while (trackpadAccumX <= -1f) { dxSteps--; trackpadAccumX += 1f }
+        while (trackpadAccumY >=  1f) { dySteps++; trackpadAccumY -= 1f }
+        while (trackpadAccumY <= -1f) { dySteps--; trackpadAccumY += 1f }
+        if (dxSteps != 0 || dySteps != 0) {
+            // Route cursor motion through a dedicated callback so the
+            // service moves the cursor with InputConnection.setSelection
+            // instead of DPAD KeyEvents — DPADs can move focus to a
+            // sibling view (e.g. the Send button next to a chat input).
+            listener?.onCursorMove(dxSteps, dySteps)
+        }
     }
 
     private fun endTrackpad() {
-        stopTrackpadTick()
         trackpadView?.let { removeView(it) }
         trackpadView = null
         trackpadActive = false
@@ -871,18 +844,15 @@ class KeyboardView @JvmOverloads constructor(
         const val POPUP_ZONE_DP = 90f
         /** Height of the emoji search overlay header (query + results strip). */
         const val SEARCH_HEADER_DP = 104f
-        /** Sampling interval for the analog-stick tick. 50 ms ≈ 20 Hz. */
-        const val TRACKPAD_TICK_MS = 50L
-        /** Radius inside which the cursor doesn't move at all (px-equiv in dp). */
-        const val TRACKPAD_DEAD_ZONE_DP = 4f
-        /** Distance from the anchor where the analog curve hits max speed. */
-        const val TRACKPAD_MAX_DEFLECTION_DP = 70f
-        /** Cursor velocity ceiling on the horizontal axis. */
-        const val TRACKPAD_MAX_HORIZONTAL_CHARS_PER_SEC = 14f
-        /** Cursor velocity ceiling on the vertical axis — kept noticeably
-         *  lower than horizontal because a stray line-skip is worse than a
+        /** Finger pixels per one character of horizontal cursor movement
+         *  at sensitivity 1.0. Lower = faster cursor, higher = more
+         *  precise. */
+        const val TRACKPAD_PX_PER_CHAR_DP = 18f
+        /** Finger pixels per one line of vertical cursor movement at
+         *  sensitivity 1.0 — intentionally larger than the horizontal
+         *  ratio because a stray line-skip is more disruptive than a
          *  stray character skip. */
-        const val TRACKPAD_MAX_VERTICAL_LINES_PER_SEC = 4f
+        const val TRACKPAD_PX_PER_LINE_DP = 36f
     }
 
     override fun onDetachedFromWindow() {
