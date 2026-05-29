@@ -20,7 +20,9 @@ import com.pckeyboard.ime.model.KeyboardLayout
 object HungarianLayout {
 
     private fun numberRow(): List<Key> = listOf(
-        Key.char("0", "~", alt = "<", popup = "<`"),
+        // 0's AltGr `<` removed — duplicate of í's AltGr; í is the
+        // canonical home of `<` on Hungarian ISO.
+        Key.char("0", "~", popup = "`"),
         Key.char("1", "'", alt = "~", popup = "~!¡¹"),
         Key.char("2", "\"", alt = "ˇ", popup = "ˇ@²"),
         Key.char("3", "+", alt = "^", popup = "^#³"),
@@ -36,12 +38,12 @@ object HungarianLayout {
         Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, repeatable = true)
     )
 
-    // AltGr layer from the canonical Magyar billentyűzetkiosztás:
-    //   q→\  w→|  e→Ä  r→¶  t→ŧ  z→@  u→€  o→[  p→]  ő→÷  ú→×  ű→¤
-    // Letters where the spec leaves AltGr blank are left without alt= so
-    // Alt+key passes through as a META_ALT_ON KeyEvent for app shortcuts
-    // (Ctrl+Alt+key chords etc.). The popup chars start with the AltGr
-    // glyph so it's also reachable via long-press.
+    // AltGr layer from the canonical Magyar billentyűzetkiosztás, with
+    // every glyph appearing on exactly one key so the bottom-right hint
+    // in KeyView never repeats a character across the layout. Where the
+    // spec listed the same glyph on multiple keys we keep it on the
+    // xkb-standard position (e.g. [ on d, ] on g, @ on v, $ on é,
+    // ł on k, < on í, > on y) and drop the duplicate from the others.
     private fun topLetters(): List<Key> = listOf(
         Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB),
         Key.letter("q", alt = "\\", popup = "\\"),
@@ -49,11 +51,14 @@ object HungarianLayout {
         Key.letter("e", alt = "Ä", popup = "Ä€éèêëē"),
         Key.letter("r", alt = "¶", popup = "¶₹"),
         Key.letter("t", alt = "ŧ", popup = "ŧ₺þ"),
-        Key.letter("z", alt = "@", popup = "@žźż"),
+        // z's `@` removed — duplicate of v.
+        Key.letter("z", popup = "žźż"),
         Key.letter("u", alt = "€", popup = "€úüűùûū"),
         Key.letter("i", popup = "íìîïī"),
-        Key.letter("o", alt = "[", popup = "[óöőòôõø"),
-        Key.letter("p", alt = "]", popup = "]π₱§"),
+        // o's `[` removed — duplicate of d.
+        Key.letter("o", popup = "óöőòôõø"),
+        // p's `]` removed — duplicate of g.
+        Key.letter("p", popup = "π₱§"),
         Key.char("ő", "Ő", alt = "÷", popup = "÷[{"),
         Key.char("ú", "Ú", alt = "×", popup = "×]}"),
         Key.char("ű", "Ű", alt = "¤", popup = "¤\\|")
@@ -64,12 +69,15 @@ object HungarianLayout {
         Key.letter("a", alt = "đ", popup = "đáàâãåæä"),
         Key.letter("s", alt = "Đ", popup = "Đßš§"),
         Key.letter("d", alt = "[", popup = "["),
-        Key.letter("f", alt = "]", popup = "]₣"),
+        // f's `]` removed — duplicate of g.
+        Key.letter("f", popup = "₣"),
         Key.letter("g", alt = "]", popup = "]"),
-        Key.letter("h", alt = "ł", popup = "łħ"),
+        // h's `ł` removed — duplicate of k.
+        Key.letter("h", popup = "ħ"),
         Key.letter("j", alt = "Ł", popup = "Łĵ"),
         Key.letter("k", alt = "ł", popup = "ł"),
-        Key.letter("l", alt = "$", popup = "$£₤λ"),
+        // l's `$` removed — duplicate of é.
+        Key.letter("l", popup = "£₤λ"),
         Key.char("é", "É", alt = "$", popup = "$;:"),
         Key.char("á", "Á", alt = "ß", popup = "ß'\""),
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
@@ -84,9 +92,11 @@ object HungarianLayout {
         Key.letter("v", alt = "@", popup = "@"),
         Key.letter("b", alt = "{", popup = "{đ"),
         Key.letter("n", alt = "}", popup = "}ñń"),
-        Key.letter("m", alt = "<", popup = "<µ"),
+        // m's `<` removed — duplicate of í.
+        Key.letter("m", popup = "µ"),
         Key.char(",", "?", alt = ";", popup = ";«‹„"),
-        Key.char(".", ":", alt = ">", popup = ">…»›"),
+        // . `>` removed — duplicate of y.
+        Key.char(".", ":", popup = "…»›"),
         Key.char("-", "_", alt = "*", popup = "*–—"),
         Key.fn("▲", KeyType.ARROW_UP, KeyEvent.KEYCODE_DPAD_UP, repeatable = true),
         Key.fn("⇧", KeyType.SHIFT, sticky = true, weight = 1.0f)
