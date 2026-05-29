@@ -63,4 +63,8 @@
     <string name="settings_auto_update">Auto-update</string>
     <string name="settings_auto_update_hint">Download new releases in the background while this keyboard is the default IME. The system installer still asks for confirmation.</string>
     <string name="settings_auto_update_interval">Check every</string>
+    <string name="clip_editor_title">Edit clipboard entry</string>
+    <string name="clip_editor_send">Send</string>
+    <string name="clip_editor_cancel">Cancel</string>
+    <string name="clip_editor_hint">Edit, then tap Send to commit.</string>
 </resources>

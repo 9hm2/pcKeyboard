@@ -52,6 +52,10 @@ class KeyboardView @JvmOverloads constructor(
     // Emoji picker overlay shown via the action menu "Emoji" item.
     private var emojiView: EmojiView? = null
 
+    // Clipboard manager overlay.
+    private var clipboardView: com.pckeyboard.ime.clipboard.ClipboardView? = null
+    private val clipHistory = com.pckeyboard.ime.clipboard.ClipboardHistory(context)
+
     // Space-trackpad state.
     private var trackpadView: TrackpadView? = null
     private var trackpadActive: Boolean = false
@@ -131,12 +135,12 @@ class KeyboardView @JvmOverloads constructor(
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-                ).apply {
-                    topMargin = spacing
-                    bottomMargin = spacing
-                    leftMargin = spacing
-                    rightMargin = spacing
-                }
+                )
+                // Row carries no margin of its own; each KeyView's internal
+                // padding (spacing / 2 on every side) produces a uniform
+                // "spacing"-sized gap between every pair of adjacent keys,
+                // both within a row AND between rows. The first / last
+                // keys on each edge get the same spacing / 2 inset.
             }
             val spaceIndex = row.indexOfFirst { it.type == KeyType.SPACE }
             val isSpaceRow = splitGap > 0f && spaceIndex >= 0
@@ -268,9 +272,21 @@ class KeyboardView @JvmOverloads constructor(
     private fun showActionMenu(anchor: KeyView) {
         dismissActionMenu()
         val theme = theme ?: return
-        val items = listOf(
+        val prefs = com.pckeyboard.ime.settings.KeyboardPrefs(context)
+        val enabled = prefs.enabledLanguages
+        val langItems = com.pckeyboard.ime.layout.LayoutRegistry.available
+            .filter { it.id in enabled }
+            .map { pack ->
+                MenuItem(
+                    icon = "🌐",
+                    label = "${com.pckeyboard.ime.service.languageCode(pack.id)} — ${pack.displayName}",
+                    action = MenuAction.SwitchLanguage(pack.id),
+                    isCurrent = pack.id == currentLanguageId && !isEmojiOpen()
+                )
+            }
+        val items = langItems + listOf(
             MenuItem("😀", "Emoji",            MenuAction.OpenEmoji),
-            MenuItem("📋", "Paste clipboard",  MenuAction.PasteClipboard),
+            MenuItem("📋", "Clipboard",        MenuAction.OpenClipboard),
             MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings)
         )
         val menu = ActionMenuView(context, items, theme) { action ->
@@ -356,6 +372,43 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     fun isEmojiOpen(): Boolean = emojiView != null
+
+    // --- Clipboard manager -----------------------------------------------
+
+    fun showClipboard() {
+        if (clipboardView != null) return
+        val theme = theme ?: return
+        val view = com.pckeyboard.ime.clipboard.ClipboardView(context, theme, clipHistory).apply {
+            listener = object : com.pckeyboard.ime.clipboard.ClipboardView.Listener {
+                override fun onCommit(text: String) {
+                    this@KeyboardView.listener?.onText(text)
+                    hideClipboard()
+                }
+                override fun onEdit(text: String) {
+                    this@KeyboardView.listener?.onClipboardEdit(text)
+                    hideClipboard()
+                }
+                override fun onBack() = hideClipboard()
+            }
+        }
+        clipboardView = view
+        rowsContainer.visibility = INVISIBLE
+        addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    fun hideClipboard() {
+        clipboardView?.let { removeView(it) }
+        clipboardView = null
+        rowsContainer.visibility = VISIBLE
+    }
+
+    fun isClipboardOpen(): Boolean = clipboardView != null
+
+    /** Refresh the clipboard cards (called by the service after the OS
+     *  primary-clip listener fires while the panel is open). */
+    fun refreshClipboard() {
+        clipboardView?.refresh()
+    }
 
     // Dismiss the action menu when the user taps anywhere outside it. The
     // tap is consumed (return true) so the underlying key doesn't also
@@ -522,6 +575,7 @@ class KeyboardView @JvmOverloads constructor(
         dismissActionMenu()
         endTrackpad()
         hideEmojiPicker()
+        hideClipboard()
         super.onDetachedFromWindow()
     }
 
@@ -549,6 +603,8 @@ class KeyboardView @JvmOverloads constructor(
             KeyType.ALT -> { modifiers.tapAlt(); true }
             KeyType.META -> { modifiers.tapMeta(); true }
             KeyType.CAPS_LOCK -> { modifiers.toggleCapsLock(); true }
+            // Globe tap is intentionally a no-op — long-press shows the menu.
+            KeyType.LANGUAGE_SWITCH -> true
             else -> false
         }
         if (!isModifierToggle) {
@@ -577,7 +633,9 @@ class KeyboardView @JvmOverloads constructor(
         fun onCursorMove(dx: Int, dy: Int)
         /** Globe long-press action menu selection. */
         fun onMenuAction(action: MenuAction)
-        /** Commit a literal string (used for multi-codepoint emoji). */
+        /** Commit a literal string (used for multi-codepoint emoji + clip taps). */
         fun onText(text: String)
+        /** Open the clipboard editor activity for the given existing entry. */
+        fun onClipboardEdit(text: String)
     }
 }

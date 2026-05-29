@@ -90,10 +90,12 @@ data class MenuItem(
 )
 
 sealed class MenuAction {
-    /** Paste the current primary clip. */
-    object PasteClipboard : MenuAction()
+    /** Switch to the given language pack id. */
+    data class SwitchLanguage(val packId: String) : MenuAction()
     /** Show the emoji picker overlay. */
     object OpenEmoji : MenuAction()
+    /** Show the clipboard manager overlay. */
+    object OpenClipboard : MenuAction()
     /** Launch the keyboard's Settings activity. */
     object OpenSettings : MenuAction()
 }

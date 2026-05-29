@@ -9,9 +9,9 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputMethodSubtype
-import com.pckeyboard.ime.settings.SettingsActivity
-import com.pckeyboard.ime.updater.UpdateScheduler
-import com.pckeyboard.ime.view.MenuAction
+import com.pckeyboard.ime.clipboard.ClipboardEditorActivity
+import com.pckeyboard.ime.clipboard.ClipboardEditorBridge
+import com.pckeyboard.ime.clipboard.ClipboardHistory
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
 import com.pckeyboard.ime.model.Key
@@ -20,8 +20,21 @@ import com.pckeyboard.ime.model.KeyboardLayout
 import com.pckeyboard.ime.model.LayoutMode
 import com.pckeyboard.ime.model.ModifierState
 import com.pckeyboard.ime.settings.KeyboardPrefs
+import com.pckeyboard.ime.settings.SettingsActivity
 import com.pckeyboard.ime.theme.ThemeRepository
+import com.pckeyboard.ime.updater.UpdateScheduler
 import com.pckeyboard.ime.view.KeyboardView
+import com.pckeyboard.ime.view.MenuAction
+
+/** Compact UI label for a language pack id ("en_US" → "EN"). Shared with
+ *  KeyboardView.showActionMenu so the locale row reads naturally. */
+fun languageCode(id: String): String = when (id) {
+    "en_US" -> "EN"
+    "hu_HU" -> "HU"
+    "de_DE" -> "DE"
+    "es_ES" -> "ES"
+    else -> "•"
+}
 
 /**
  * The IME service.
@@ -40,16 +53,31 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var currentMode: LayoutMode = LayoutMode.MAIN
     private var keyboardView: KeyboardView? = null
 
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return@OnPrimaryClipChangedListener
+        val clip = cm.primaryClip ?: return@OnPrimaryClipChangedListener
+        if (clip.itemCount == 0) return@OnPrimaryClipChangedListener
+        val text = clip.getItemAt(0)?.coerceToText(this)?.toString() ?: return@OnPrimaryClipChangedListener
+        if (text.isNotBlank()) {
+            ClipboardHistory(this).add(text)
+            keyboardView?.refreshClipboard()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         themeRepo = ThemeRepository(this)
         kbPrefs = KeyboardPrefs(this)
-        // Persisted internally — survives reboots and works regardless of
-        // whether the user enabled multiple Android IME subtypes.
         currentLayoutId = kbPrefs.currentLanguage
-        // Kick the periodic update check schedule. Idempotent: WorkManager
-        // keeps the existing entry if one is already enqueued.
         UpdateScheduler.schedule(this)
+        (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)
+            ?.addPrimaryClipChangedListener(clipListener)
+    }
+
+    override fun onDestroy() {
+        (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)
+            ?.removePrimaryClipChangedListener(clipListener)
+        super.onDestroy()
     }
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype?) {
@@ -117,6 +145,13 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.updateTheme(themeRepo.getSelectedTheme())
         bindCurrentLayout()
         keyboardView?.applySizingPrefs()
+        // If the user finished the clipboard editor with Send, commit the
+        // edited text and persist the replacement into the history.
+        ClipboardEditorBridge.consume()?.let { r ->
+            if (r.edited.isNotEmpty()) currentInputConnection?.commitText(r.edited, 1)
+            ClipboardHistory(this).replace(r.original, r.edited)
+            keyboardView?.refreshClipboard()
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -162,13 +197,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         return layout.copy(rows = newRows)
     }
 
-    private fun languageLabelFor(id: String): String = when (id) {
-        "en_US" -> "EN"
-        "hu_HU" -> "HU"
-        "de_DE" -> "DE"
-        "es_ES" -> "ES"
-        else -> "•"
-    }
+    private fun languageLabelFor(id: String): String = languageCode(id)
 
     override fun onKey(key: Key, modifiers: ModifierState) {
         if (currentInputConnection == null) return
@@ -260,15 +289,26 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onMenuAction(action: MenuAction) {
         when (action) {
-            MenuAction.PasteClipboard -> {
-                val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager
-                val clip = cm?.primaryClip ?: return
-                if (clip.itemCount == 0) return
-                val text = clip.getItemAt(0)?.coerceToText(this)?.toString() ?: return
-                if (text.isNotEmpty()) currentInputConnection?.commitText(text, 1)
+            is MenuAction.SwitchLanguage -> {
+                currentLayoutId = action.packId
+                kbPrefs.currentLanguage = action.packId
+                currentMode = LayoutMode.MAIN
+                keyboardView?.hideEmojiPicker()
+                keyboardView?.hideClipboard()
+                bindCurrentLayout()
             }
             MenuAction.OpenEmoji -> {
                 keyboardView?.showEmojiPicker()
+            }
+            MenuAction.OpenClipboard -> {
+                // Snapshot the system clip into history so it shows up as
+                // the freshest card even if the listener missed the copy.
+                val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager
+                cm?.primaryClip?.takeIf { it.itemCount > 0 }
+                    ?.getItemAt(0)?.coerceToText(this)?.toString()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { ClipboardHistory(this).add(it) }
+                keyboardView?.showClipboard()
             }
             MenuAction.OpenSettings -> {
                 val intent = Intent(this, SettingsActivity::class.java)
@@ -276,6 +316,13 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                 startActivity(intent)
             }
         }
+    }
+
+    override fun onClipboardEdit(text: String) {
+        val intent = Intent(this, ClipboardEditorActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra(ClipboardEditorActivity.EXTRA_TEXT, text)
+        startActivity(intent)
     }
 
     /** Multi-codepoint commits (emoji, etc.) that don't fit through a single

@@ -36,6 +36,13 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|density" />
 
         <activity
+            android:name=".clipboard.ClipboardEditorActivity"
+            android:exported="false"
+            android:label="@string/clip_editor_title"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|density"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
+
+        <activity
             android:name=".editor.ThemeEditorActivity"
             android:exported="false"
             android:label="@string/theme_editor_title"
