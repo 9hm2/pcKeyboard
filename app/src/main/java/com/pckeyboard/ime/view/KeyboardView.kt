@@ -105,7 +105,13 @@ class KeyboardView @JvmOverloads constructor(
     fun bind(layout: KeyboardLayout, theme: KeyboardTheme) {
         this.layoutData = layout
         this.theme = theme
-        setBackgroundColor(theme.backgroundColor)
+        // In side-split mode leave the view transparent so the empty
+        // middle column shows whatever app is behind the IME (combined
+        // with the transparent IME window set up in PcKeyboardService).
+        // Each KeyView still draws its own opaque background, so the
+        // keys themselves stay solid against the see-through gap.
+        if (prefs.sideSplitEnabled) setBackgroundColor(0)
+        else setBackgroundColor(theme.backgroundColor)
         rebuild()
         requestLayout()
     }
@@ -161,6 +167,11 @@ class KeyboardView @JvmOverloads constructor(
         val side = (resources.displayMetrics.widthPixels * prefs.horizontalPadding).toInt()
         rowsContainer.setPadding(side, 0, side, 0)
 
+        if (prefs.sideSplitEnabled) {
+            buildSideSplitRows(layout, theme)
+            return
+        }
+
         val splitGap = if (prefs.splitEnabled && widthDp >= KeyboardPrefs.SPLIT_MIN_WIDTH_DP)
             prefs.splitGapWeight else 0f
 
@@ -207,6 +218,121 @@ class KeyboardView @JvmOverloads constructor(
             }
             rowsContainer.addView(rowView)
         }
+    }
+
+    /**
+     * Renders the layout in "side-split" mode: every row gets sliced at
+     * its weight midpoint and rebuilt as [left keys][big gap][right keys]
+     * so both thumbs can reach the keys on a landscape phone without
+     * stretching. When the midpoint falls inside a key (typically Space),
+     * the key is duplicated as a left half + a right half so each thumb
+     * has its own Space.
+     *
+     * The gap weight is the same on every row, which preserves
+     * row-to-row alignment (▲ stays directly above ▼, etc.). The middle
+     * gap is just a [View] with no listener; PcKeyboardService.onComputeInsets
+     * carves it out of the touchable region so taps in the gap fall
+     * through to whatever app is behind the keyboard.
+     */
+    private fun buildSideSplitRows(layout: KeyboardLayout, theme: KeyboardTheme) {
+        val gap = KeyboardPrefs.SIDE_SPLIT_GAP_WEIGHT
+        for (row in layout.rows) {
+            val rowView = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+                )
+            }
+            val originalTotal = row.sumOf { it.widthWeight.toDouble() }.toFloat()
+            val totalWeight = originalTotal + gap
+            val midpoint = originalTotal / 2f
+            var cumulative = 0f
+            var gapInserted = false
+            for (key in row) {
+                val keyStart = cumulative
+                val keyEnd = cumulative + key.widthWeight
+                cumulative = keyEnd
+                if (gapInserted) {
+                    rowView.addView(makeKeyView(key, theme, key.widthWeight / totalWeight))
+                    continue
+                }
+                if (keyStart >= midpoint) {
+                    // Gap goes BEFORE this key — keys split cleanly here.
+                    rowView.addView(makeGapView(gap / totalWeight))
+                    rowView.addView(makeKeyView(key, theme, key.widthWeight / totalWeight))
+                    gapInserted = true
+                } else if (keyEnd > midpoint) {
+                    // Midpoint is strictly inside this key — split the key
+                    // into a left and right half so both halves remain
+                    // tappable (this is how Space ends up as two reachable
+                    // half-Space keys).
+                    val leftW = midpoint - keyStart
+                    val rightW = keyEnd - midpoint
+                    if (leftW > 0.001f) {
+                        rowView.addView(makeKeyView(key, theme, leftW / totalWeight))
+                    }
+                    rowView.addView(makeGapView(gap / totalWeight))
+                    if (rightW > 0.001f) {
+                        rowView.addView(makeKeyView(key, theme, rightW / totalWeight))
+                    }
+                    gapInserted = true
+                } else {
+                    rowView.addView(makeKeyView(key, theme, key.widthWeight / totalWeight))
+                }
+            }
+            // Edge case: a row with all keys on the left of the midpoint —
+            // still emit a trailing gap so the row width is consistent.
+            if (!gapInserted) rowView.addView(makeGapView(gap / totalWeight))
+            rowsContainer.addView(rowView)
+        }
+    }
+
+    private fun makeKeyView(key: Key, theme: KeyboardTheme, weight: Float): KeyView =
+        KeyView(context, key, theme, modifiers).apply {
+            listener = this@KeyboardView
+            layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT, weight
+            )
+        }
+
+    private fun makeGapView(weight: Float): View = View(context).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.MATCH_PARENT, weight
+        )
+    }
+
+    /**
+     * Bounds (in KeyboardView coords) of the empty middle column when
+     * side-split is active. Returns `null` when side-split is off or the
+     * view hasn't been laid out yet. The IME service uses this to carve
+     * the middle out of its touchable region so taps in the gap fall
+     * through to whatever app is behind the keyboard.
+     */
+    fun sideSplitGapBounds(): android.graphics.Rect? {
+        if (!prefs.sideSplitEnabled) return null
+        val layout = layoutData ?: return null
+        if (layout.rows.isEmpty()) return null
+        if (width == 0 || height == 0) return null
+
+        val firstRow = layout.rows.first()
+        val originalTotal = firstRow.sumOf { it.widthWeight.toDouble() }.toFloat()
+        val gapWeight = KeyboardPrefs.SIDE_SPLIT_GAP_WEIGHT
+        val totalWeight = originalTotal + gapWeight
+
+        val side = (resources.displayMetrics.widthPixels * prefs.horizontalPadding).toInt()
+        val innerLeft = side
+        val innerWidth = width - 2 * side
+
+        val leftKeysWidth = (originalTotal / 2f / totalWeight * innerWidth).toInt()
+        val gapWidth = (gapWeight / totalWeight * innerWidth).toInt()
+        val gapLeft = innerLeft + leftKeysWidth
+        val gapRight = gapLeft + gapWidth
+
+        // Only the rows area is the gap — the optional search header
+        // above the rows stays opaque + touchable.
+        val gapTop = rowsContainer.top
+        val gapBottom = rowsContainer.bottom.takeIf { it > gapTop } ?: height
+        return android.graphics.Rect(gapLeft, gapTop, gapRight, gapBottom)
     }
 
     private fun findSplitIndex(row: List<Key>): Int {
@@ -323,8 +449,10 @@ class KeyboardView @JvmOverloads constructor(
                 )
             }
         val fnRowIcon = if (prefs.showFunctionRow) "☑" else "☐"
+        val sideSplitIcon = if (prefs.sideSplitEnabled) "☑" else "☐"
         val items = langItems + listOf(
-            MenuItem(fnRowIcon, "Function row (Esc, F1…)", MenuAction.ToggleFunctionRow),
+            MenuItem(fnRowIcon,    "Function row (Esc, F1…)",    MenuAction.ToggleFunctionRow),
+            MenuItem(sideSplitIcon, "Side-split (left + right)", MenuAction.ToggleSideSplit),
             MenuItem("😀", "Emoji",            MenuAction.OpenEmoji),
             MenuItem("📋", "Clipboard",        MenuAction.OpenClipboard),
             MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings)

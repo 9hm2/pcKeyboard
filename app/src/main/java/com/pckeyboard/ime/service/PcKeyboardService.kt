@@ -4,6 +4,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
+import android.inputmethodservice.InputMethodService.Insets
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -134,6 +135,13 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val view = KeyboardView(this)
         view.listener = this
         keyboardView = view
+        // Drop the IME window's own background so the see-through gap
+        // we draw in side-split mode actually reveals the app behind us.
+        // Doesn't affect non-split modes because the KeyboardView itself
+        // is then opaque.
+        window?.window?.setBackgroundDrawable(
+            android.graphics.drawable.ColorDrawable(0)
+        )
         bindCurrentLayout()
         return view
     }
@@ -180,6 +188,32 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      * focused app visible above our keyboard exactly like portrait does.
      */
     override fun onEvaluateFullscreenMode(): Boolean = false
+
+    /**
+     * When the user has enabled side-split, carve the middle gap out of
+     * the IME's touchable region so taps in the gap fall through to the
+     * app behind the keyboard. The visible / content insets stay at
+     * their defaults so the app still resizes above the IME — the gap
+     * is purely a touch-through pocket.
+     */
+    override fun onComputeInsets(outInsets: Insets) {
+        super.onComputeInsets(outInsets)
+        val view = keyboardView ?: return
+        val gap = view.sideSplitGapBounds() ?: return
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+        val region = outInsets.touchableRegion
+        region.setEmpty()
+        // Left strip: from the left edge to the start of the gap.
+        region.union(android.graphics.Rect(0, 0, gap.left, view.height))
+        // Right strip: from the end of the gap to the right edge.
+        region.union(android.graphics.Rect(gap.right, 0, view.width, view.height))
+        // Anything above the rows (search header, etc.) stays touchable
+        // — those rows are outside the gap rect already, but include
+        // the strip explicitly in case the gap doesn't start at y=0.
+        if (gap.top > 0) {
+            region.union(android.graphics.Rect(0, 0, view.width, gap.top))
+        }
+    }
 
     private fun bindCurrentLayout() {
         val view = keyboardView ?: return
@@ -334,6 +368,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             }
             MenuAction.ToggleFunctionRow -> {
                 kbPrefs.showFunctionRow = !kbPrefs.showFunctionRow
+                bindCurrentLayout()
+            }
+            MenuAction.ToggleSideSplit -> {
+                kbPrefs.sideSplitEnabled = !kbPrefs.sideSplitEnabled
                 bindCurrentLayout()
             }
         }

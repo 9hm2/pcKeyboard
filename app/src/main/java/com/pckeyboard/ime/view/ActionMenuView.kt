@@ -168,4 +168,6 @@ sealed class MenuAction {
     object OpenSettings : MenuAction()
     /** Flip the "show function row on narrow screens" preference. */
     object ToggleFunctionRow : MenuAction()
+    /** Flip the "side-split" (left half + gap + right half) preference. */
+    object ToggleSideSplit : MenuAction()
 }

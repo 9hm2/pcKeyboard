@@ -55,6 +55,22 @@ class KeyboardPrefs(context: Context) {
         }
 
     /**
+     * Distinct from [splitEnabled] / [splitGapWeight] (which only add a
+     * small centre gap on wide tablet screens). When this is on, the
+     * keyboard is rendered as a true "side-split" — every row is broken
+     * into a left half and a right half with a large gap in the middle,
+     * Space is duplicated as two half-Space keys so both thumbs can hit
+     * it, and the touchable region of the IME is restricted to the two
+     * side strips so the underlying app can be tapped through the gap.
+     *
+     * Primary use case is landscape on a narrow phone where the regular
+     * keyboard otherwise eats the whole bottom half of the screen.
+     */
+    var sideSplitEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SIDE_SPLIT, false)
+        set(value) { prefs.edit().putBoolean(KEY_SIDE_SPLIT, value).apply() }
+
+    /**
      * Force the F-key / Esc / Home / End row to be shown even on narrow
      * screens that would normally drop it to save vertical space. The
      * globe long-press menu offers a one-tap toggle for this so the user
@@ -115,6 +131,9 @@ class KeyboardPrefs(context: Context) {
         private const val KEY_LP_DELAY = "kb_long_press_delay_ms"
         private const val KEY_TRACKPAD_SENS = "kb_trackpad_sensitivity"
         private const val KEY_SHOW_FN_ROW = "kb_show_function_row"
+        private const val KEY_SIDE_SPLIT = "kb_side_split_enabled"
+        /** Weight of the big empty centre when sideSplit is on. */
+        const val SIDE_SPLIT_GAP_WEIGHT = 5f
         private const val KEY_LANG = "kb_current_language"
         private const val KEY_ENABLED_LANGS = "kb_enabled_languages"
         private const val KEY_AUTO_UPDATE = "kb_auto_update_enabled"
