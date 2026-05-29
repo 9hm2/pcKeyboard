@@ -11,8 +11,11 @@ android {
         applicationId = "com.pckeyboard.ime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        // CI overrides these via env vars so each release-tagged APK reports
+        // its own tag as BuildConfig.VERSION_NAME — that's what the in-app
+        // updater compares against to decide whether a newer release exists.
+        versionCode = System.getenv("PCK_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("PCK_VERSION_NAME") ?: "1.0.0"
     }
 
     // Release keystore is NOT committed to the repo — provide it locally

@@ -54,9 +54,6 @@ jobs:
         run: ./gradlew :app:lintDebug --stacktrace --warning-mode=summary
         continue-on-error: true
 
-      - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace --warning-mode=summary
-
       - name: Resolve release tag
         id: tag
         run: |
@@ -65,8 +62,21 @@ jobs:
           else
             TAG="ci-$(date -u +%Y%m%d-%H%M%S)"
           fi
+          # versionName is the tag with the optional leading "v" stripped so
+          # it matches what the in-app updater normalises against.
+          VERSION_NAME="${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Publishing release tag: $TAG"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "Publishing release tag: $TAG (versionName=$VERSION_NAME)"
+
+      - name: Build debug APK
+        env:
+          # Bake the release tag into BuildConfig.VERSION_NAME so the
+          # in-app updater can tell whether this exact build is already
+          # the latest.
+          PCK_VERSION_NAME: ${{ steps.tag.outputs.version_name }}
+          PCK_VERSION_CODE: ${{ github.run_number }}
+        run: ./gradlew :app:assembleDebug --stacktrace --warning-mode=summary
 
       - name: Rename APK
         id: rename
