@@ -30,6 +30,18 @@ object VoicePunctuation {
         )
     }
 
+    /** Variant that only matches when the word sits at the very end of
+     *  the transcript — used for words that double as ordinary nouns
+     *  (Hungarian "pont", literally "point") so an inline noun isn't
+     *  silently chopped into a period. */
+    private fun endRule(word: String, mark: String): Rule {
+        val escaped = Regex.escape(word).replace(" ", "\\s+")
+        return Rule(
+            Regex("(?:^|\\s+)$escaped\\s*$", RegexOption.IGNORE_CASE),
+            mark
+        )
+    }
+
     private val HU: List<Rule> = listOf(
         // Multi-word patterns first so "új sor" wins over "új" + "sor".
         rule("új sor",       "\n"),
@@ -46,7 +58,10 @@ object VoicePunctuation {
         rule("felkialtojel", "!"),
         rule("vessző",       ","),
         rule("vesszo",       ","),
-        rule("pont",         "."),
+        // "pont" is a real Hungarian noun ("the point") so converting it
+        // wherever it shows up eats inline words. Only convert it at the
+        // very end of the utterance — when the user means a final stop.
+        endRule("pont",      "."),
         rule("kötőjel",      "-"),
         rule("kotojel",      "-"),
         rule("gondolatjel",  " — "),
@@ -66,9 +81,11 @@ object VoicePunctuation {
         rule("semicolon",         ";"),
         rule("colon",             ":"),
         rule("comma",             ","),
-        rule("period",            "."),
-        rule("full stop",         "."),
-        rule("dot",               "."),
+        // "period" / "full stop" / "dot" double as ordinary nouns —
+        // only convert at the end of the utterance.
+        endRule("period",         "."),
+        endRule("full stop",      "."),
+        endRule("dot",            "."),
         rule("dash",              "-"),
         rule("hyphen",            "-"),
         rule("quote",             "\""),
@@ -82,7 +99,8 @@ object VoicePunctuation {
         rule("fragezeichen", "?"),
         rule("ausrufezeichen", "!"),
         rule("komma",       ","),
-        rule("punkt",       "."),
+        // "Punkt" is a common German noun, only convert at end.
+        endRule("punkt",    "."),
         rule("bindestrich", "-"),
         rule("anführungszeichen", "\""),
         rule("anfuehrungszeichen", "\""),
@@ -104,7 +122,8 @@ object VoicePunctuation {
         rule("dos puntos",             ":"),
         rule("punto y coma",           ";"),
         rule("coma",                   ","),
-        rule("punto",                  "."),
+        // "punto" is a common Spanish noun, only convert at end.
+        endRule("punto",               "."),
         rule("guion",                  "-"),
         rule("guión",                  "-"),
         rule("comillas",               "\""),
