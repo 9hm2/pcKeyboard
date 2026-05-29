@@ -91,13 +91,16 @@ class KeyPopupView(
             val isSelected = i == selectedIndex
 
             if (isSelected) {
-                // Selected cell expands outside the card so it pops visually.
+                // Selected cell grows into the surrounding padding (left,
+                // right, top, bottom) — staying INSIDE the popup view's
+                // own bounds so the parent FrameLayout doesn't clip the
+                // top corners. Result: a fully-rounded accent pill.
                 val grow = dp(4f)
                 rect.set(
-                    cellLeft - grow,
-                    -grow.toFloat(),
-                    cellLeft + cellWidth + grow,
-                    pad + cellHeight + grow
+                    (cellLeft - grow).coerceAtLeast(0f),
+                    (pad - grow).coerceAtLeast(0f),
+                    (cellLeft + cellWidth + grow).coerceAtMost(width.toFloat()),
+                    (pad + cellHeight + grow).coerceAtMost(height.toFloat())
                 )
                 bgPaint.color = theme.accentColor
                 canvas.drawRoundRect(rect, cellCornerRadius, cellCornerRadius, bgPaint)
