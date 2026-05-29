@@ -67,6 +67,10 @@ class VoiceInputView(
     private var listening: Boolean = false
     private var lastPartial: String = ""
     private var rmsDb: Float = 0f
+    /** True if the user explicitly tapped Stop / ✕ — so a follow-up
+     *  ERROR_CLIENT from the recogniser cancelling doesn't get
+     *  misinterpreted as a real recognition failure. */
+    private var userCanceled: Boolean = false
 
     init {
         setBackgroundColor(theme.backgroundColor)
@@ -243,6 +247,8 @@ class VoiceInputView(
             )
             return
         }
+        userCanceled = false
+        lastPartial = ""
         val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also {
             recognizer = it
         }
@@ -259,6 +265,16 @@ class VoiceInputView(
             override fun onEndOfSpeech() { listening = false; refreshUi() }
             override fun onError(error: Int) {
                 listening = false
+                // SpeechRecognizer routinely fires ERROR_CLIENT after the
+                // user finishes speaking and the service shuts down —
+                // even when partial results came through cleanly. If we
+                // have a usable transcript and the user didn't cancel,
+                // commit it instead of throwing an error in their face.
+                if (!userCanceled && lastPartial.isNotBlank()) {
+                    onText(lastPartial)
+                    return
+                }
+                userCanceled = false
                 statusText.text = when (error) {
                     SpeechRecognizer.ERROR_NETWORK,
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
@@ -314,6 +330,7 @@ class VoiceInputView(
     }
 
     private fun stopListening() {
+        userCanceled = true
         recognizer?.stopListening()
         recognizer?.cancel()
         listening = false
