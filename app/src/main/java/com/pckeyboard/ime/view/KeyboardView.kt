@@ -479,10 +479,12 @@ class KeyboardView @JvmOverloads constructor(
                 )
             }
         val fnRowIcon = if (prefs.showFunctionRow) "☑" else "☐"
-        val sideSplitIcon = if (prefs.sideSplitEnabled) "☑" else "☐"
+        // Side-split menu entry temporarily hidden — rendering bugs need
+        // fixing before we re-expose the toggle. The MenuAction itself
+        // stays in the sealed class so the wiring can be re-enabled
+        // without a manifest change.
         val items = langItems + listOf(
-            MenuItem(fnRowIcon,    "Function row (Esc, F1…)",    MenuAction.ToggleFunctionRow),
-            MenuItem(sideSplitIcon, "Side-split (left + right)", MenuAction.ToggleSideSplit),
+            MenuItem(fnRowIcon, "Function row (Esc, F1…)", MenuAction.ToggleFunctionRow),
             MenuItem("😀", "Emoji",            MenuAction.OpenEmoji),
             MenuItem("📋", "Clipboard",        MenuAction.OpenClipboard),
             MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings)

@@ -76,9 +76,15 @@ class KeyboardPrefs(context: Context) {
      *
      * Primary use case is landscape on a narrow phone where the regular
      * keyboard otherwise eats the whole bottom half of the screen.
+     *
+     * **Temporarily force-disabled** — the rendering has visual bugs we
+     * haven't tracked down yet. The getter always returns `false` so
+     * existing users who had the toggle on don't get stuck in the buggy
+     * mode; the setter still writes the preference so when we re-enable
+     * it the old state comes back.
      */
     var sideSplitEnabled: Boolean
-        get() = prefs.getBoolean(KEY_SIDE_SPLIT, false)
+        get() = false
         set(value) { prefs.edit().putBoolean(KEY_SIDE_SPLIT, value).apply() }
 
     /**
