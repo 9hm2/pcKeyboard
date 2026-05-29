@@ -75,8 +75,8 @@ internal object LayoutBlocks {
         Key.fn("🌐",   KeyType.LANGUAGE_SWITCH, weight = 1.0f),
         Key.fn("Win",   KeyType.META, sticky = true, weight = 1.0f),
         Key.fn("Alt",   KeyType.ALT,  sticky = true, weight = 1.0f),
-        Key.fn("123",   KeyType.SYMBOL_SWITCH, weight = 1.0f),
         Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 6.0f),
+        Key.fn("123",   KeyType.SYMBOL_SWITCH, weight = 1.0f),
         Key.fn("◀",    KeyType.ARROW_LEFT,  KeyEvent.KEYCODE_DPAD_LEFT,  repeatable = true),
         Key.fn("▼",    KeyType.ARROW_DOWN,  KeyEvent.KEYCODE_DPAD_DOWN,  repeatable = true),
         Key.fn("▶",    KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true)
