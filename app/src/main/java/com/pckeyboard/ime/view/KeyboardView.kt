@@ -41,12 +41,21 @@ class KeyboardView @JvmOverloads constructor(
         orientation = LinearLayout.VERTICAL
     }
 
-    /** Vertical stack holding [emojiSearchHeader] (optional, on top) and
-     *  [rowsContainer]. Wraps both so the header can push the keyboard rows
-     *  down without overlapping them while emoji search is active. */
+    /** Vertical stack holding [popupTopSpacer], [emojiSearchHeader] (optional)
+     *  and [rowsContainer]. Wraps everything so the header can push the
+     *  keyboard rows down without overlapping them while emoji search is
+     *  active, and so we can transiently inflate the area above the rows
+     *  to make room for a long-press popup on the very top row. */
     private val mainContainer = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
     }
+    /** Invisible spacer at the very top of [mainContainer]. Grown by the
+     *  long-press popup when the anchor key sits too close to the top of
+     *  the keyboard to fit the popup above it; the matching extra height
+     *  is also added to the IME view's measured size so the keyboard rows
+     *  don't shrink to make room. */
+    private val popupTopSpacer = View(context)
+    private var popupExtraHeight: Int = 0
 
     // Long-press popup state — rendered as a child of this FrameLayout so it
     // is always visible on top of the keys (a PopupWindow is unreliable in
@@ -91,6 +100,12 @@ class KeyboardView @JvmOverloads constructor(
 
     init {
         mainContainer.addView(
+            popupTopSpacer,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0
+            )
+        )
+        mainContainer.addView(
             rowsContainer,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
@@ -125,8 +140,10 @@ class KeyboardView @JvmOverloads constructor(
             val base = dp(perRowDp) * rows + dp((theme?.keySpacingDp ?: 3).toFloat()) * (rows + 1)
             // Grow the IME view by the search header height so the full
             // keyboard stays at its normal size while the user is typing
-            // into the emoji search query above it.
-            val extra = if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0
+            // into the emoji search query above it. popupExtraHeight is
+            // a transient bump that opens room above the top row for a
+            // long-press popup; it's reset on dismiss.
+            val extra = (if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0) + popupExtraHeight
             val targetHeight = (base * prefs.heightScale).toInt() + extra
             val resolved = if (mode == MeasureSpec.AT_MOST) {
                 minOf(MeasureSpec.getSize(heightMeasureSpec), targetHeight)
@@ -700,10 +717,21 @@ class KeyboardView @JvmOverloads constructor(
         if (popupX < 0) popupX = 0
         if (popupX + popupW > width) popupX = (width - popupW).coerceAtLeast(0)
 
-        // Never fall below the anchor: clamp to the top of the keyboard if
-        // there isn't enough room above. Worst case the popup overlaps the
-        // anchor visually, but the user is looking at the popup at that point.
-        if (popupY < 0) popupY = 0
+        // If the anchor is too close to the top of the keyboard for the
+        // popup to fit above, grow the IME view by exactly the missing
+        // amount (popupTopSpacer + onMeasure cooperate). After the grow
+        // the anchor's Y in keyboard-coords shifts down by the same
+        // amount, so popupY can be pinned to 0 and the popup will draw
+        // entirely above the row instead of bleeding onto it.
+        if (popupY < 0) {
+            val needed = -popupY
+            popupExtraHeight = needed
+            popupTopSpacer.layoutParams = popupTopSpacer.layoutParams.apply {
+                height = needed
+            }
+            requestLayout()
+            popupY = 0
+        }
 
         val lp = LayoutParams(popupW, popupH).apply {
             leftMargin = popupX
@@ -715,6 +743,11 @@ class KeyboardView @JvmOverloads constructor(
     private fun dismissPopup() {
         popupView?.let { removeView(it) }
         popupView = null
+        if (popupExtraHeight != 0) {
+            popupExtraHeight = 0
+            popupTopSpacer.layoutParams = popupTopSpacer.layoutParams.apply { height = 0 }
+            requestLayout()
+        }
     }
 
     // --- Space trackpad ---------------------------------------------------

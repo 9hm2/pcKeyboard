@@ -115,10 +115,36 @@ class ThemeEditorActivity : AppCompatActivity() {
 
     private fun wireColorInput(input: android.widget.EditText, initial: Int, onChange: (Int) -> Unit) {
         input.setText(String.format("#%08X", initial))
+
+        // Hang a coloured swatch off the TextInputLayout's end-icon slot;
+        // tapping it opens the ARGB picker so the user doesn't have to
+        // type hex by hand.
+        val til = input.parent?.parent as? com.google.android.material.textfield.TextInputLayout
+        val density = resources.displayMetrics.density
+        val swatch = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = density * 4f
+            setColor(initial)
+            setStroke((density * 1f).toInt(), android.graphics.Color.parseColor("#55888888"))
+            setSize((density * 28f).toInt(), (density * 28f).toInt())
+        }
+        if (til != null) {
+            til.endIconMode = com.google.android.material.textfield.TextInputLayout.END_ICON_CUSTOM
+            til.endIconDrawable = swatch
+            til.setEndIconOnClickListener {
+                val current = parseHexColor(input.text.toString()) ?: initial
+                ColorPickerDialog.show(this, current) { picked ->
+                    input.setText(String.format("#%08X", picked))
+                    swatch.setColor(picked)
+                }
+            }
+        }
+
         input.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
                 val txt = s?.toString().orEmpty().trim()
                 val parsed = parseHexColor(txt) ?: return
+                swatch.setColor(parsed)
                 onChange(parsed)
             }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}

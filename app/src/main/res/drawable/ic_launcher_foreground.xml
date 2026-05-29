@@ -4,10 +4,55 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Drop shadow under the keyboard body, kept inside the safe zone. -->
     <path
-        android:pathData="M22,40 L86,40 A6,6 0 0 1 92,46 L92,72 A6,6 0 0 1 86,78 L22,78 A6,6 0 0 1 16,72 L16,46 A6,6 0 0 1 22,40 Z"
-        android:fillColor="#1A73E8"/>
+        android:pathData="M16,40 L92,40 A6,6 0 0 1 98,46 L98,82 A6,6 0 0 1 92,88 L16,88 A6,6 0 0 1 10,82 L10,46 A6,6 0 0 1 16,40 Z"
+        android:fillColor="#40000000" />
+
+    <!-- Keyboard body — slightly elevated above the shadow. -->
     <path
-        android:pathData="M24,48 L30,48 L30,54 L24,54 Z M34,48 L40,48 L40,54 L34,54 Z M44,48 L50,48 L50,54 L44,54 Z M54,48 L60,48 L60,54 L54,54 Z M64,48 L70,48 L70,54 L64,54 Z M74,48 L84,48 L84,54 L74,54 Z M24,58 L30,58 L30,64 L24,64 Z M34,58 L40,58 L40,64 L34,64 Z M44,58 L50,58 L50,64 L44,64 Z M54,58 L60,58 L60,64 L54,64 Z M64,58 L70,58 L70,64 L64,64 Z M74,58 L84,58 L84,64 L74,64 Z M28,68 L44,68 L44,72 L28,72 Z M48,68 L72,68 L72,72 L48,72 Z M76,68 L84,68 L84,72 L76,72 Z"
-        android:fillColor="#FFFFFF"/>
+        android:pathData="M16,38 L92,38 A5,5 0 0 1 97,43 L97,79 A5,5 0 0 1 92,84 L16,84 A5,5 0 0 1 11,79 L11,43 A5,5 0 0 1 16,38 Z"
+        android:fillColor="#1B1A33" />
+
+    <!-- Subtle top glaze for depth. -->
+    <path
+        android:pathData="M16,38 L92,38 A5,5 0 0 1 97,43 L97,46 L11,46 L11,43 A5,5 0 0 1 16,38 Z"
+        android:fillColor="#30FFFFFF" />
+
+    <!-- Function row (small keys). -->
+    <path
+        android:pathData="M16,48 L22,48 L22,52 L16,52 Z M24,48 L30,48 L30,52 L24,52 Z M32,48 L38,48 L38,52 L32,52 Z M40,48 L46,48 L46,52 L40,52 Z M48,48 L54,48 L54,52 L48,52 Z M56,48 L62,48 L62,52 L56,52 Z M64,48 L70,48 L70,52 L64,52 Z M72,48 L78,48 L78,52 L72,52 Z M80,48 L86,48 L86,52 L80,52 Z M88,48 L92,48 L92,52 L88,52 Z"
+        android:fillColor="#6F6F95" />
+
+    <!-- Letter row 1. -->
+    <path
+        android:pathData="M16,54 L23,54 L23,60 L16,60 Z M25,54 L32,54 L32,60 L25,60 Z M34,54 L41,54 L41,60 L34,60 Z M43,54 L50,54 L50,60 L43,60 Z M52,54 L59,54 L59,60 L52,60 Z M61,54 L68,54 L68,60 L61,60 Z M70,54 L77,54 L77,60 L70,60 Z M79,54 L86,54 L86,60 L79,60 Z M88,54 L92,54 L92,60 L88,60 Z"
+        android:fillColor="#A5A8D0" />
+
+    <!-- Letter row 2. -->
+    <path
+        android:pathData="M16,62 L23,62 L23,68 L16,68 Z M25,62 L32,62 L32,68 L25,68 Z M34,62 L41,62 L41,68 L34,68 Z M43,62 L50,62 L50,68 L43,68 Z M52,62 L59,62 L59,68 L52,68 Z M61,62 L68,62 L68,68 L61,68 Z M70,62 L77,62 L77,68 L70,68 Z M79,62 L92,62 L92,68 L79,68 Z"
+        android:fillColor="#A5A8D0" />
+
+    <!-- Control row: Ctrl (accent), Win/Alt (modifier), wide Space,
+         arrow keys at right. The Ctrl key gets a vivid cyan to hint
+         "this is a PC keyboard with proper modifiers". -->
+    <path android:pathData="M16,70 L25,70 L25,76 L16,76 Z"
+        android:fillColor="#22D3EE" />
+    <path android:pathData="M27,70 L34,70 L34,76 L27,76 Z M36,70 L43,70 L43,76 L36,76 Z"
+        android:fillColor="#6F6F95" />
+    <path android:pathData="M45,70 L72,70 L72,76 L45,76 Z"
+        android:fillColor="#C3C6E8" />
+    <path android:pathData="M74,70 L80,70 L80,76 L74,76 Z M82,70 L86,70 L86,76 L82,76 Z M88,70 L92,70 L92,76 L88,76 Z"
+        android:fillColor="#6F6F95" />
+
+    <!-- Tiny LED-style accent dots at the top right of the keyboard
+         body for a little personality. -->
+    <path android:pathData="M84,42 m-1,0 a1,1 0 1,0 2,0 a1,1 0 1,0 -2,0"
+        android:fillColor="#FF6B9D" />
+    <path android:pathData="M89,42 m-1,0 a1,1 0 1,0 2,0 a1,1 0 1,0 -2,0"
+        android:fillColor="#22D3EE" />
+    <path android:pathData="M94,42 m-1,0 a1,1 0 1,0 2,0 a1,1 0 1,0 -2,0"
+        android:fillColor="#FBBF24" />
 </vector>
