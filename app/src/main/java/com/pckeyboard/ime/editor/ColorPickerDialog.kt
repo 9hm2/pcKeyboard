@@ -31,6 +31,11 @@ object ColorPickerDialog {
         var green = (initial ushr 8) and 0xFF
         var blue = initial and 0xFF
 
+        // One reset function per slider — captured so "Default" can put
+        // every slider back to its starting value without closing the
+        // dialog.
+        val resetActions = mutableListOf<() -> Unit>()
+
         fun currentColor(): Int =
             (alpha and 0xFF shl 24) or
                 (red and 0xFF shl 16) or
@@ -73,6 +78,7 @@ object ColorPickerDialog {
         }
 
         fun addSlider(label: String, value: Int, set: (Int) -> Unit) {
+            val initialValue = value
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -108,6 +114,11 @@ object ColorPickerDialog {
             row.addView(seek)
             row.addView(valueView)
             root.addView(row)
+            // Putting seek.progress back to the initial value fires the
+            // listener above, which in turn calls set(), updates valueView
+            // and refreshes the preview — so we only need to capture this
+            // one call to fully reset the slider's state.
+            resetActions.add { seek.progress = initialValue }
         }
 
         addSlider("A", alpha) { alpha = it }
@@ -115,11 +126,20 @@ object ColorPickerDialog {
         addSlider("G", green) { green = it }
         addSlider("B", blue) { blue = it }
 
-        MaterialAlertDialogBuilder(context)
+        val dialog = MaterialAlertDialogBuilder(context)
             .setTitle("Pick colour")
             .setView(root)
             .setPositiveButton(android.R.string.ok) { _, _ -> onPicked(currentColor()) }
+            // null listener keeps the button visible but doesn't auto-
+            // dismiss the dialog — onShow below wires the real handler
+            // so "Default" rolls every slider back without closing.
+            .setNeutralButton("Default", null)
             .setNegativeButton(android.R.string.cancel, null)
-            .show()
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL)
+                ?.setOnClickListener { resetActions.forEach { it() } }
+        }
+        dialog.show()
     }
 }
