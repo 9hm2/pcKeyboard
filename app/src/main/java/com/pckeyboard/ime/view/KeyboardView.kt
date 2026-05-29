@@ -56,14 +56,22 @@ class KeyboardView @JvmOverloads constructor(
     private var clipboardView: com.pckeyboard.ime.clipboard.ClipboardView? = null
     private val clipHistory = com.pckeyboard.ime.clipboard.ClipboardHistory(context)
 
-    // Space-trackpad state.
+    // Space-trackpad state. After the user slides their finger to the
+    // indicator and "arms" the trackpad, we capture the anchor position;
+    // every tick the deflection from that anchor drives an analog-stick
+    // style speed (with a small dead zone in the centre and a quadratic
+    // ramp so fine control is possible near the anchor without giving up
+    // top speed at the edges).
     private var trackpadView: TrackpadView? = null
     private var trackpadActive: Boolean = false
     private var trackpadArmed: Boolean = false
-    private var trackpadLastX: Float = 0f
-    private var trackpadLastY: Float = 0f
-    private var trackpadDxAccum: Float = 0f
-    private var trackpadDyAccum: Float = 0f
+    private var trackpadAnchorX: Float = 0f
+    private var trackpadAnchorY: Float = 0f
+    private var trackpadCurrentX: Float = 0f
+    private var trackpadCurrentY: Float = 0f
+    private var trackpadAccumX: Float = 0f
+    private var trackpadAccumY: Float = 0f
+    private var trackpadTickRunnable: Runnable? = null
 
     init {
         addView(
@@ -514,8 +522,8 @@ class KeyboardView @JvmOverloads constructor(
         trackpadView = tp
         trackpadActive = true
         trackpadArmed = false
-        trackpadDxAccum = 0f
-        trackpadDyAccum = 0f
+        trackpadAccumX = 0f
+        trackpadAccumY = 0f
         // Don't toggle rowsContainer visibility: the trackpad's opaque draw
         // covers the rows by itself, and toggling visibility can trigger
         // ACTION_CANCEL on the still-active space-press gesture, which would
@@ -523,6 +531,12 @@ class KeyboardView @JvmOverloads constructor(
         addView(tp, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
+    /**
+     * After arming, MOVE events just store the latest position; the actual
+     * cursor motion is driven by [trackpadTickRunnable], which samples the
+     * deflection from the armed anchor every [TRACKPAD_TICK_MS] and adds
+     * speed-from-deflection to the accumulators.
+     */
     private fun handleTrackpadMove(rawX: Float, rawY: Float) {
         val tp = trackpadView ?: return
         val loc = IntArray(2)
@@ -534,44 +548,97 @@ class KeyboardView @JvmOverloads constructor(
             if (tp.isInsideIndicator(localX, localY)) {
                 trackpadArmed = true
                 tp.armed = true
-                trackpadLastX = rawX
-                trackpadLastY = rawY
+                trackpadAnchorX = rawX
+                trackpadAnchorY = rawY
+                trackpadCurrentX = rawX
+                trackpadCurrentY = rawY
                 tp.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                startTrackpadTick()
             }
             return
         }
+        trackpadCurrentX = rawX
+        trackpadCurrentY = rawY
+    }
 
-        val stepPx = dp(10f).toFloat()
-        trackpadDxAccum += rawX - trackpadLastX
-        trackpadDyAccum += rawY - trackpadLastY
-        trackpadLastX = rawX
-        trackpadLastY = rawY
+    private fun startTrackpadTick() {
+        stopTrackpadTick()
+        val deadZonePx = dp(TRACKPAD_DEAD_ZONE_DP).toFloat()
+        val maxDeflectionPx = dp(TRACKPAD_MAX_DEFLECTION_DP).toFloat()
+        val dtSec = TRACKPAD_TICK_MS / 1000f
+        val runnable = object : Runnable {
+            override fun run() {
+                val dx = trackpadCurrentX - trackpadAnchorX
+                val dy = trackpadCurrentY - trackpadAnchorY
+                trackpadAccumX += analogSpeed(dx, deadZonePx, maxDeflectionPx,
+                    TRACKPAD_MAX_HORIZONTAL_CHARS_PER_SEC) * dtSec
+                trackpadAccumY += analogSpeed(dy, deadZonePx, maxDeflectionPx,
+                    TRACKPAD_MAX_VERTICAL_LINES_PER_SEC) * dtSec
+                var dxSteps = 0
+                var dySteps = 0
+                while (trackpadAccumX >=  1f) { dxSteps++; trackpadAccumX -= 1f }
+                while (trackpadAccumX <= -1f) { dxSteps--; trackpadAccumX += 1f }
+                while (trackpadAccumY >=  1f) { dySteps++; trackpadAccumY -= 1f }
+                while (trackpadAccumY <= -1f) { dySteps--; trackpadAccumY += 1f }
+                // Route cursor motion through a dedicated callback so the
+                // service moves the cursor with InputConnection.setSelection
+                // instead of DPAD KeyEvents — DPADs can move focus to a
+                // sibling view (e.g. the Send button next to a chat input).
+                if (dxSteps != 0 || dySteps != 0) {
+                    listener?.onCursorMove(dxSteps, dySteps)
+                }
+                handler.postDelayed(this, TRACKPAD_TICK_MS)
+            }
+        }
+        trackpadTickRunnable = runnable
+        handler.postDelayed(runnable, TRACKPAD_TICK_MS)
+    }
 
-        var dxSteps = 0
-        var dySteps = 0
-        while (abs(trackpadDxAccum) >= stepPx) {
-            if (trackpadDxAccum > 0) { dxSteps++; trackpadDxAccum -= stepPx }
-            else { dxSteps--; trackpadDxAccum += stepPx }
-        }
-        while (abs(trackpadDyAccum) >= stepPx) {
-            if (trackpadDyAccum > 0) { dySteps++; trackpadDyAccum -= stepPx }
-            else { dySteps--; trackpadDyAccum += stepPx }
-        }
-        // Route cursor motion through a dedicated callback so the service
-        // can move the cursor with InputConnection.setSelection instead of
-        // sending DPAD KeyEvents — DPADs can move focus to a sibling view
-        // (e.g. the Send button next to a chat input), which fires
-        // onFinishInput and looks to the user like the keyboard vanishing.
-        if (dxSteps != 0 || dySteps != 0) {
-            listener?.onCursorMove(dxSteps, dySteps)
-        }
+    private fun stopTrackpadTick() {
+        trackpadTickRunnable?.let { handler.removeCallbacks(it) }
+        trackpadTickRunnable = null
+    }
+
+    /**
+     * Maps a signed deflection (px) to a signed speed (units / sec) along
+     * the same axis. Inside the dead zone the speed is zero; outside it
+     * the curve is quadratic, so the first millimetres past the dead zone
+     * produce gentle motion and the cursor only races when the finger is
+     * pushed near the indicator's edge — exactly like an analog stick.
+     */
+    private fun analogSpeed(deflection: Float, deadZone: Float, maxDef: Float, maxSpeed: Float): Float {
+        val absDef = abs(deflection)
+        if (absDef <= deadZone) return 0f
+        val effective = (absDef - deadZone).coerceAtMost(maxDef - deadZone)
+        val maxEffective = (maxDef - deadZone).coerceAtLeast(1f)
+        val normalized = effective / maxEffective
+        val curved = normalized * normalized
+        return if (deflection > 0) curved * maxSpeed else -curved * maxSpeed
     }
 
     private fun endTrackpad() {
+        stopTrackpadTick()
         trackpadView?.let { removeView(it) }
         trackpadView = null
         trackpadActive = false
         trackpadArmed = false
+        trackpadAccumX = 0f
+        trackpadAccumY = 0f
+    }
+
+    private companion object {
+        /** Sampling interval for the analog-stick tick. 50 ms ≈ 20 Hz. */
+        const val TRACKPAD_TICK_MS = 50L
+        /** Radius inside which the cursor doesn't move at all (px-equiv in dp). */
+        const val TRACKPAD_DEAD_ZONE_DP = 4f
+        /** Distance from the anchor where the analog curve hits max speed. */
+        const val TRACKPAD_MAX_DEFLECTION_DP = 70f
+        /** Cursor velocity ceiling on the horizontal axis. */
+        const val TRACKPAD_MAX_HORIZONTAL_CHARS_PER_SEC = 14f
+        /** Cursor velocity ceiling on the vertical axis — kept noticeably
+         *  lower than horizontal because a stray line-skip is worse than a
+         *  stray character skip. */
+        const val TRACKPAD_MAX_VERTICAL_LINES_PER_SEC = 4f
     }
 
     override fun onDetachedFromWindow() {
