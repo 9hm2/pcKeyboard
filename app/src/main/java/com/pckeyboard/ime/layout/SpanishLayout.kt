@@ -32,6 +32,8 @@ object SpanishLayout {
         Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.5f, repeatable = true)
     )
 
+    // AltGr per HK values-es/donottranslate-altchars.xml: vowels expose
+    // their accented equivalents directly under Alt; e also gets €.
     private fun topLetters(): List<Key> = listOf(
         Key.fn("Tab", KeyType.TAB, KeyEvent.KEYCODE_TAB, weight = 1.5f),
         Key.letter("q"),
@@ -39,10 +41,10 @@ object SpanishLayout {
         Key.letter("e", alt = "€", popup = "€éèêë"),
         Key.letter("r"),
         Key.letter("t"),
-        Key.letter("y", popup = "ÿý"),
-        Key.letter("u", popup = "úüùûū"),
-        Key.letter("i", popup = "íìîï"),
-        Key.letter("o", popup = "óòöôõ"),
+        Key.letter("y", alt = "ý", popup = "ýÿ"),
+        Key.letter("u", alt = "ú", popup = "úüùûū"),
+        Key.letter("i", alt = "í", popup = "íìîï"),
+        Key.letter("o", alt = "ó", popup = "óòöôõ"),
         Key.letter("p"),
         Key.char("`", "^", popup = "[°"),
         Key.char("+", "*", popup = "]"),
@@ -51,15 +53,15 @@ object SpanishLayout {
 
     private fun homeLetters(): List<Key> = listOf(
         Key.fn("Ctrl", KeyType.CTRL, sticky = true, weight = 1.5f),
-        Key.letter("a", popup = "áàâäãå"),
-        Key.letter("s"),
+        Key.letter("a", alt = "á", popup = "áàâäãå"),
+        Key.letter("s", alt = "§", popup = "§ß"),
         Key.letter("d"),
         Key.letter("f"),
         Key.letter("g"),
         Key.letter("h"),
         Key.letter("j"),
         Key.letter("k"),
-        Key.letter("l"),
+        Key.letter("l", alt = "£", popup = "£"),
         Key.char("ñ", "Ñ", popup = "~"),
         Key.char("´", "¨", popup = "`'¨"),
         Key.fn("⏎", KeyType.ENTER, KeyEvent.KEYCODE_ENTER, weight = 1.5f)
@@ -70,11 +72,11 @@ object SpanishLayout {
         Key.char("<", ">", popup = "|≤≥«»"),
         Key.letter("z"),
         Key.letter("x"),
-        Key.letter("c", popup = "çć"),
+        Key.letter("c", alt = "ç", popup = "çčć¢"),
         Key.letter("v"),
         Key.letter("b"),
-        Key.letter("n", popup = "ñń"),
-        Key.letter("m"),
+        Key.letter("n", alt = "ñ", popup = "ñń"),
+        Key.letter("m", alt = "µ", popup = "µ"),
         Key.char(",", ";", popup = "«‹„"),
         Key.char(".", ":", popup = "…»›"),
         Key.char("-", "_", popup = "–—"),
