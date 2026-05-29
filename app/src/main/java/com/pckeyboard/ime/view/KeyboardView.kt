@@ -232,9 +232,12 @@ class KeyboardView @JvmOverloads constructor(
             handleTrackpadMove(rawX, rawY)
             return
         }
-        // Action menu doesn't slide-to-select any more — ignore finger
-        // movement while it's open.
-        if (actionMenuView != null) return
+        // Action menu supports slide-to-select: as the finger moves up onto
+        // the menu, highlight whichever row is under it.
+        actionMenuView?.let {
+            it.highlightAt(rawX, rawY)
+            return
+        }
         val popup = popupView ?: return
         val loc = IntArray(2)
         popup.getLocationOnScreen(loc)
@@ -248,10 +251,11 @@ class KeyboardView @JvmOverloads constructor(
             endTrackpad()
             return
         }
-        if (actionMenuView != null) {
-            // Action menu uses tap-to-select: just let the user release the
-            // long-press; the menu stays up until they tap an item or tap
-            // outside.
+        actionMenuView?.let { menu ->
+            // If the user slid onto a row, fire it and close. If they
+            // released still on the globe key (no hover), leave the menu
+            // up so it can be tapped instead.
+            menu.commitHover()
             return
         }
         val selected = popupView?.let { p ->

@@ -14,11 +14,14 @@ import com.pckeyboard.ime.theme.KeyboardTheme
 /**
  * Vertical action menu shown on long-press of the globe key.
  *
- * Built as a [NestedScrollView] wrapping a stack of TextView rows, so it
+ * Built as a [NestedScrollView] wrapping a stack of TextView rows so it
  * grows when extra items are added and scrolls inside the keyboard's
- * bounds instead of being clipped. Items are tapped, not slid — long-press
- * pops the menu, the user lifts their finger, then taps the desired row.
- * Tapping outside the menu dismisses it (handled in KeyboardView).
+ * bounds. Supports two interaction styles:
+ *
+ *  - Tap: release the long-press, then tap a row.
+ *  - Slide: keep the finger pressed; [highlightAt] tracks which row the
+ *    finger is over, and [commitHover] dispatches the highlighted row's
+ *    action when the finger lifts.
  */
 class ActionMenuView(
     context: Context,
@@ -28,6 +31,9 @@ class ActionMenuView(
 ) : NestedScrollView(context) {
 
     val menuWidth: Int = dp(240f)
+
+    private val rows = mutableListOf<TextView>()
+    private var hoveredIndex: Int = -1
 
     init {
         val bg = GradientDrawable().apply {
@@ -43,7 +49,9 @@ class ActionMenuView(
             setPadding(dp(6f), dp(6f), dp(6f), dp(6f))
         }
         for (item in items) {
-            column.addView(buildRow(item))
+            val row = buildRow(item)
+            rows.add(row)
+            column.addView(row)
         }
         addView(column, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     }
@@ -56,16 +64,6 @@ class ActionMenuView(
             gravity = Gravity.CENTER_VERTICAL
             isClickable = true
             isFocusable = true
-            if (item.isCurrent) {
-                setTextColor(theme.accentColor)
-                val highlight = GradientDrawable().apply {
-                    setColor(theme.keyBackgroundColor)
-                    cornerRadius = dp(8f).toFloat()
-                }
-                background = highlight
-            } else {
-                setTextColor(theme.modifierTextColor)
-            }
             setOnClickListener {
                 performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 onAction(item.action)
@@ -74,7 +72,77 @@ class ActionMenuView(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(2f); bottomMargin = dp(2f) }
         }
+        applyDefaultStyle(row, item)
         return row
+    }
+
+    private fun applyDefaultStyle(row: TextView, item: MenuItem) {
+        if (item.isCurrent) {
+            row.setTextColor(theme.accentColor)
+            val highlight = GradientDrawable().apply {
+                setColor(theme.keyBackgroundColor)
+                cornerRadius = dp(8f).toFloat()
+            }
+            row.background = highlight
+        } else {
+            row.setTextColor(theme.modifierTextColor)
+            row.background = null
+        }
+    }
+
+    private fun applyHoverStyle(row: TextView) {
+        row.setTextColor(theme.accentTextColor)
+        val hover = GradientDrawable().apply {
+            setColor(theme.accentColor)
+            cornerRadius = dp(8f).toFloat()
+        }
+        row.background = hover
+    }
+
+    /**
+     * Highlight the row whose vertical extent contains the given screen
+     * point. Pass coordinates outside the menu bounds to clear the
+     * highlight (e.g. while the finger is still on the globe key).
+     */
+    fun highlightAt(rawX: Float, rawY: Float) {
+        val newIdx = rowIndexAt(rawX, rawY)
+        if (newIdx == hoveredIndex) return
+        if (hoveredIndex in rows.indices) {
+            applyDefaultStyle(rows[hoveredIndex], items[hoveredIndex])
+        }
+        hoveredIndex = newIdx
+        if (hoveredIndex in rows.indices) {
+            applyHoverStyle(rows[hoveredIndex])
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        }
+    }
+
+    /**
+     * If a row is currently highlighted (via [highlightAt]), dispatch its
+     * action and return `true`. Otherwise return `false` so the caller
+     * knows to leave the menu open for tap selection.
+     */
+    fun commitHover(): Boolean {
+        val idx = hoveredIndex
+        if (idx in rows.indices) {
+            performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            onAction(items[idx].action)
+            return true
+        }
+        return false
+    }
+
+    private fun rowIndexAt(rawX: Float, rawY: Float): Int {
+        val loc = IntArray(2)
+        getLocationOnScreen(loc)
+        val localX = rawX - loc[0]
+        val localY = rawY - loc[1]
+        if (localX < 0 || localX > width || localY < 0 || localY > height) return -1
+        val contentY = localY + scrollY
+        for ((i, row) in rows.withIndex()) {
+            if (contentY >= row.top && contentY < row.bottom) return i
+        }
+        return -1
     }
 
     private fun dp(v: Float): Int =
