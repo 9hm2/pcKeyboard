@@ -319,6 +319,16 @@ class VoiceInputView(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, recognitionLocale)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            // Android 13+ — ask the recogniser to format the transcript
+            // (auto-capitalisation, sentence punctuation). Recognisers
+            // that don't implement the extra ignore it, so older
+            // devices fall back to plain text gracefully.
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                putExtra(
+                    RecognizerIntent.EXTRA_ENABLE_FORMATTING,
+                    RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY
+                )
+            }
         }
         try {
             rec.startListening(intent)
