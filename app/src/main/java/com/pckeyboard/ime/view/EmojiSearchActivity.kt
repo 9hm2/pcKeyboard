@@ -50,7 +50,7 @@ class EmojiSearchActivity : AppCompatActivity() {
 
         EmojiSearchBridge.pending = null
 
-        findViewById<ImageButton>(R.id.btnClose).setOnClickListener { finish() }
+        findViewById<ImageButton>(R.id.btnClose).setOnClickListener { finishAndRemoveTask() }
 
         val recycler = findViewById<RecyclerView>(R.id.results).apply {
             layoutManager = GridLayoutManager(this@EmojiSearchActivity, 8)
@@ -101,7 +101,7 @@ class EmojiSearchActivity : AppCompatActivity() {
             holder.text.setOnClickListener {
                 EmojiSearchBridge.pending = emoji
                 EmojiSearchBridge.timestamp = System.currentTimeMillis()
-                finish()
+                finishAndRemoveTask()
             }
         }
     }
