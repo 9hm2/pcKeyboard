@@ -16,16 +16,17 @@ import androidx.viewpager2.widget.ViewPager2
 import com.pckeyboard.ime.theme.KeyboardTheme
 
 /**
- * Full-keyboard emoji picker. Tab row at the top, a swipeable
- * [ViewPager2] of category pages (each an 8-column scrollable grid) in
- * the middle, and a control row with ABC / 🔍 / backspace / space /
- * enter at the bottom.
+ * Full-keyboard emoji picker. Tab row at the top with the category
+ * icons and a permanent 🔍 search button pinned at the right edge; a
+ * swipeable [ViewPager2] of category pages (each an 8-column scrollable
+ * grid) in the middle; and a slim bottom control row with a centred
+ * Space key and ABC + ⌫ on the right.
  *
- * Tapping 🔍 fires [Listener.onSearch] — KeyboardView responds by
- * collapsing this picker, mounting a small search header above the real
- * keyboard rows, and routing the user's letter / space / backspace key
- * presses into the header's query field so the **full** keyboard is
- * available for typing (not a mini-pad).
+ * Tapping the search button fires [Listener.onSearch] — KeyboardView
+ * responds by collapsing this picker, mounting a small search header
+ * above the real keyboard rows, and routing the user's letter / space /
+ * backspace key presses into the header's query field so the **full**
+ * keyboard is available for typing (not a mini-pad).
  */
 class EmojiView(
     context: Context,
@@ -38,7 +39,6 @@ class EmojiView(
         fun onBack()
         fun onBackspace()
         fun onSpace()
-        fun onEnter()
         fun onSearch()
     }
 
@@ -55,10 +55,15 @@ class EmojiView(
             orientation = LinearLayout.VERTICAL
         }
 
-        // 1. Category tab row.
-        val tabBar = LinearLayout(context).apply {
+        // 1. Top row: category tabs (scrollable) + a permanent 🔍 button
+        //    pinned at the right edge so search is reachable from where
+        //    the user already is (the tab row), not down at the bottom.
+        val topRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.modifierKeyColor)
+        }
+        val tabBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
         }
         for ((i, cat) in pages.withIndex()) {
             val btn = TextView(context).apply {
@@ -67,8 +72,10 @@ class EmojiView(
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                 isClickable = true
                 isFocusable = true
+                setPadding(dp(14f), 0, dp(14f), 0)
                 layoutParams = LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT
                 )
                 setOnClickListener { pager.setCurrentItem(i, true) }
             }
@@ -82,7 +89,26 @@ class EmojiView(
                 LinearLayout.LayoutParams.MATCH_PARENT
             ))
         }
-        root.addView(tabScroller, LinearLayout.LayoutParams(
+        topRow.addView(tabScroller, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
+        ))
+        val searchBtn = TextView(context).apply {
+            text = "🔍"
+            gravity = Gravity.CENTER
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            isClickable = true
+            isFocusable = true
+            setPadding(dp(16f), 0, dp(16f), 0)
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                listener?.onSearch()
+            }
+        }
+        topRow.addView(searchBtn, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.MATCH_PARENT
+        ))
+        root.addView(topRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(44f)
         ))
 
@@ -99,22 +125,28 @@ class EmojiView(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))
 
-        // 3. Control row.
+        // 3. Bottom control row: Space in the middle, ABC + ⌫ on the
+        //    right. Symmetric padding on the left keeps Space visually
+        //    centred. Enter is omitted — the user can leave the picker
+        //    with ABC if they need to type a newline.
         val controlRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.modifierKeyColor)
         }
-        controlRow.addView(controlButton("ABC",    1.5f) { listener?.onBack() })
-        controlRow.addView(controlButton("🔍",    1.0f) { listener?.onSearch() })
-        controlRow.addView(controlButton("⌫",    1.0f) { listener?.onBackspace() })
-        controlRow.addView(controlButton("space", 4.0f) { listener?.onSpace() })
-        controlRow.addView(controlButton("⏎",    1.5f) { listener?.onEnter() })
+        controlRow.addView(spacerView(2.0f))
+        controlRow.addView(controlButton("space", 5.0f) { listener?.onSpace() })
+        controlRow.addView(controlButton("ABC",   1.5f) { listener?.onBack() })
+        controlRow.addView(controlButton("⌫",    1.5f) { listener?.onBackspace() })
         root.addView(controlRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(46f)
         ))
 
         addView(root)
         highlightTab(0)
+    }
+
+    private fun spacerView(weight: Float): View = View(context).apply {
+        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, weight)
     }
 
     private fun highlightTab(position: Int) {
