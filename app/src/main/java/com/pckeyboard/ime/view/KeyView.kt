@@ -142,7 +142,7 @@ class KeyView(
         if (isDown) return theme.keyPressedColor
         if (modState == ModifierState.State.LOCKED) return theme.accentColor
         return when (key.type) {
-            KeyType.SPACE, KeyType.ENTER -> theme.accentColor
+            KeyType.SPACE, KeyType.ENTER, KeyType.BACKSPACE -> theme.accentColor
             KeyType.LETTER, KeyType.CHAR -> theme.keyBackgroundColor
             else -> theme.modifierKeyColor
         }
@@ -151,7 +151,7 @@ class KeyView(
     private fun textColorForState(modState: ModifierState.State): Int {
         if (modState == ModifierState.State.LOCKED) return theme.accentTextColor
         return when (key.type) {
-            KeyType.SPACE, KeyType.ENTER -> theme.accentTextColor
+            KeyType.SPACE, KeyType.ENTER, KeyType.BACKSPACE -> theme.accentTextColor
             KeyType.LETTER, KeyType.CHAR -> theme.keyTextColor
             else -> theme.modifierTextColor
         }
