@@ -37,6 +37,10 @@ class ClipboardHistory(context: Context) {
         save(filtered)
     }
 
+    fun clear() {
+        save(emptyList())
+    }
+
     fun replace(old: String, new: String) {
         if (new.isBlank()) { remove(old); return }
         val list = all().toMutableList()

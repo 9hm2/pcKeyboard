@@ -38,6 +38,13 @@ class ClipboardView(
 
     private val adapter = ClipAdapter()
     private val emptyView: TextView
+    private lateinit var clearAllButton: TextView
+    private var clearArmed: Boolean = false
+    private val resetClearLabel = Runnable {
+        clearArmed = false
+        clearAllButton.text = "🗑 Clear all"
+        clearAllButton.setTextColor(theme.modifierTextColor)
+    }
 
     init {
         setBackgroundColor(theme.backgroundColor)
@@ -46,16 +53,37 @@ class ClipboardView(
             orientation = LinearLayout.VERTICAL
         }
 
-        // Title bar.
+        // Title bar — text on the left, "Clear all" trash button on the right.
+        val titleBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(theme.modifierKeyColor)
+            gravity = Gravity.CENTER_VERTICAL
+        }
         val title = TextView(context).apply {
             text = "Clipboard"
             setPadding(dp(16f), dp(12f), dp(16f), dp(12f))
             setTextColor(theme.keyTextColor)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setBackgroundColor(theme.modifierKeyColor)
         }
-        root.addView(title, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44f)))
+        titleBar.addView(title, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
+        ))
+        clearAllButton = TextView(context).apply {
+            text = "🗑 Clear all"
+            gravity = Gravity.CENTER
+            setPadding(dp(14f), 0, dp(14f), 0)
+            setTextColor(theme.modifierTextColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onClearAllTap() }
+        }
+        titleBar.addView(clearAllButton, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.MATCH_PARENT
+        ))
+        root.addView(titleBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44f)))
 
         // Either the recycler or the empty-state TextView depending on data.
         val listContainer = FrameLayout(context)
@@ -93,6 +121,23 @@ class ClipboardView(
         val list = history.all()
         adapter.update(list)
         emptyView.visibility = if (list.isEmpty()) VISIBLE else GONE
+        clearAllButton.visibility = if (list.isEmpty()) GONE else VISIBLE
+        // Whenever the list changes, drop any pending "tap again to confirm".
+        clearAllButton.removeCallbacks(resetClearLabel)
+        resetClearLabel.run()
+    }
+
+    private fun onClearAllTap() {
+        clearAllButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        if (!clearArmed) {
+            clearArmed = true
+            clearAllButton.text = "Tap to confirm"
+            clearAllButton.setTextColor(theme.accentColor)
+            clearAllButton.postDelayed(resetClearLabel, CLEAR_CONFIRM_MS)
+        } else {
+            history.clear()
+            refresh()
+        }
     }
 
     private fun controlButton(label: String, weight: Float, onClick: () -> Unit): View {
@@ -122,14 +167,11 @@ class ClipboardView(
         override fun getItemCount(): Int = items.size
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ClipVH {
-            val card = TextView(context).apply {
-                setPadding(dp(14f), dp(12f), dp(14f), dp(12f))
-                setTextColor(theme.keyTextColor)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                maxLines = 4
-                ellipsize = TextUtils.TruncateAt.END
-                isClickable = true
-                isFocusable = true
+            // Card root: rounded background, text on the left and a small ✕
+            // delete button on the right.
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 val bg = GradientDrawable().apply {
                     setColor(theme.keyBackgroundColor)
                     cornerRadius = dp(12f).toFloat()
@@ -143,7 +185,33 @@ class ClipboardView(
                     bottomMargin = dp(4f)
                 }
             }
-            return ClipVH(card)
+            val textView = TextView(context).apply {
+                setPadding(dp(14f), dp(12f), dp(8f), dp(12f))
+                setTextColor(theme.keyTextColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                maxLines = 4
+                ellipsize = TextUtils.TruncateAt.END
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+            }
+            val deleteView = TextView(context).apply {
+                text = "✕"
+                gravity = Gravity.CENTER
+                setTextColor(theme.secondaryTextColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                setPadding(dp(14f), dp(12f), dp(14f), dp(12f))
+                isClickable = true
+                isFocusable = true
+            }
+            row.addView(textView)
+            row.addView(deleteView, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            ))
+            return ClipVH(row, textView, deleteView)
         }
 
         override fun onBindViewHolder(holder: ClipVH, position: Int) {
@@ -158,11 +226,24 @@ class ClipboardView(
                 listener?.onEdit(text)
                 true
             }
+            holder.delete.setOnClickListener {
+                holder.delete.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                history.remove(text)
+                refresh()
+            }
         }
     }
 
-    private class ClipVH(val text: TextView) : RecyclerView.ViewHolder(text)
+    private class ClipVH(
+        root: View,
+        val text: TextView,
+        val delete: TextView
+    ) : RecyclerView.ViewHolder(root)
 
     private fun dp(v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
+
+    companion object {
+        private const val CLEAR_CONFIRM_MS = 3000L
+    }
 }
