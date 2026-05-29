@@ -1,99 +1,80 @@
 package com.pckeyboard.ime.view
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.RectF
-import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
-import android.view.View
+import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.widget.NestedScrollView
 import com.pckeyboard.ime.theme.KeyboardTheme
 
 /**
- * Vertical action menu shown on long-press of the globe key. Each item
- * has an icon + label and represents one [MenuAction] the service runs on
- * release.
+ * Vertical action menu shown on long-press of the globe key.
  *
- * Touch is NOT handled here — the underlying KeyView keeps capturing the
- * gesture and forwards rawY via [findIndexForY], same pattern as
- * [KeyPopupView].
+ * Built as a [NestedScrollView] wrapping a stack of TextView rows, so it
+ * grows when extra items are added and scrolls inside the keyboard's
+ * bounds instead of being clipped. Items are tapped, not slid — long-press
+ * pops the menu, the user lifts their finger, then taps the desired row.
+ * Tapping outside the menu dismisses it (handled in KeyboardView).
  */
 class ActionMenuView(
     context: Context,
     val items: List<MenuItem>,
-    private val theme: KeyboardTheme
-) : View(context) {
+    private val theme: KeyboardTheme,
+    private val onAction: (MenuAction) -> Unit
+) : NestedScrollView(context) {
 
-    var selectedIndex: Int = -1
-        set(value) {
-            if (field != value) { field = value; invalidate() }
+    val menuWidth: Int = dp(240f)
+
+    init {
+        val bg = GradientDrawable().apply {
+            setColor(theme.modifierKeyColor)
+            cornerRadius = dp(14f).toFloat()
         }
+        background = bg
+        clipToOutline = true
+        isFillViewport = false
 
-    val itemHeight: Int = dp(46f)
-    val pad: Int = dp(6f)
-    val menuWidth: Int = dp(220f)
-    private val cornerRadius: Float = dp(14f).toFloat()
-    private val itemCornerRadius: Float = dp(8f).toFloat()
-
-    private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.LEFT
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP, 15f, resources.displayMetrics
-        )
-    }
-    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.CENTER
-        textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP, 18f, resources.displayMetrics
-        )
-    }
-    private val rect = RectF()
-
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(menuWidth, itemHeight * items.size + pad * 2)
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(6f), dp(6f), dp(6f), dp(6f))
+        }
+        for (item in items) {
+            column.addView(buildRow(item))
+        }
+        addView(column, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     }
 
-    fun findIndexForY(y: Float): Int {
-        if (items.isEmpty()) return -1
-        val inside = y - pad
-        return (inside / itemHeight).toInt().coerceIn(0, items.size - 1)
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        // Outer card.
-        bgPaint.color = theme.modifierKeyColor
-        rect.set(0f, 0f, width.toFloat(), height.toFloat())
-        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, bgPaint)
-
-        for ((i, item) in items.withIndex()) {
-            val top = pad + i * itemHeight
-            val itemRect = RectF(
-                pad.toFloat(), top.toFloat(),
-                (width - pad).toFloat(), (top + itemHeight).toFloat()
-            )
-
-            if (i == selectedIndex) {
-                bgPaint.color = theme.accentColor
-                canvas.drawRoundRect(itemRect, itemCornerRadius, itemCornerRadius, bgPaint)
-                labelPaint.color = theme.accentTextColor
-                iconPaint.color = theme.accentTextColor
-            } else if (item.isCurrent) {
-                bgPaint.color = theme.keyBackgroundColor
-                canvas.drawRoundRect(itemRect, itemCornerRadius, itemCornerRadius, bgPaint)
-                labelPaint.color = theme.keyTextColor
-                iconPaint.color = theme.accentColor
+    private fun buildRow(item: MenuItem): TextView {
+        val row = TextView(context).apply {
+            text = " ${item.icon}    ${item.label}"
+            setPadding(dp(12f), dp(14f), dp(12f), dp(14f))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            if (item.isCurrent) {
+                setTextColor(theme.accentColor)
+                val highlight = GradientDrawable().apply {
+                    setColor(theme.keyBackgroundColor)
+                    cornerRadius = dp(8f).toFloat()
+                }
+                background = highlight
             } else {
-                labelPaint.color = theme.modifierTextColor
-                iconPaint.color = theme.modifierTextColor
+                setTextColor(theme.modifierTextColor)
             }
-
-            val iconCx = itemRect.left + dp(18f)
-            val cy = itemRect.centerY() - (labelPaint.descent() + labelPaint.ascent()) / 2
-            canvas.drawText(item.icon, iconCx, cy, iconPaint)
-            canvas.drawText(item.label, itemRect.left + dp(40f), cy, labelPaint)
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                onAction(item.action)
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(2f); bottomMargin = dp(2f) }
         }
+        return row
     }
 
     private fun dp(v: Float): Int =
@@ -109,8 +90,6 @@ data class MenuItem(
 )
 
 sealed class MenuAction {
-    /** Switch to a specific language pack id (e.g. "en_US"). */
-    data class SwitchLanguage(val packId: String) : MenuAction()
     /** Paste the current primary clip. */
     object PasteClipboard : MenuAction()
     /** Show the emoji picker overlay. */

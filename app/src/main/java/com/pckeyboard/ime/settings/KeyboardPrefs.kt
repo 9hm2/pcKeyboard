@@ -59,13 +59,25 @@ class KeyboardPrefs(context: Context) {
         get() = prefs.getString(KEY_LANG, "en_US") ?: "en_US"
         set(value) { prefs.edit().putString(KEY_LANG, value).apply() }
 
+    /** Set of language pack ids the user has enabled in Settings. The globe
+     *  tap cycle walks only these (plus the emoji state); at least one must
+     *  remain enabled — empty inputs are coerced to {"en_US"}. */
+    var enabledLanguages: Set<String>
+        get() = prefs.getStringSet(KEY_ENABLED_LANGS, ALL_LANG_IDS) ?: ALL_LANG_IDS
+        set(value) {
+            val safe = if (value.isEmpty()) setOf("en_US") else value
+            prefs.edit().putStringSet(KEY_ENABLED_LANGS, safe).apply()
+        }
+
     companion object {
+        val ALL_LANG_IDS: Set<String> = setOf("en_US", "hu_HU", "de_DE", "es_ES")
         private const val KEY_HEIGHT = "kb_height_scale"
         private const val KEY_HPAD = "kb_horizontal_padding"
         private const val KEY_SPLIT = "kb_split_enabled"
         private const val KEY_SPLIT_GAP = "kb_split_gap_weight"
         private const val KEY_LP_DELAY = "kb_long_press_delay_ms"
         private const val KEY_LANG = "kb_current_language"
+        private const val KEY_ENABLED_LANGS = "kb_enabled_languages"
 
         /** Threshold above which split mode is applied. */
         const val SPLIT_MIN_WIDTH_DP = 600

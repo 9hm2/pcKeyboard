@@ -63,9 +63,59 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnCheckUpdates.setOnClickListener { UpdateUi.runManualCheck(this) }
 
         wireSizingControls()
+        buildLanguageList()
         // Silent background auto-check too — same throttle as SetupActivity.
         UpdateUi.runAutoCheck(this)
     }
+
+    /** Populate the Languages card with one MaterialSwitch per shipped pack;
+     *  toggles write through to KeyboardPrefs.enabledLanguages so the IME
+     *  globe-cycle picks them up on next tap. */
+    private fun buildLanguageList() {
+        val container = binding.languageList
+        container.removeAllViews()
+        val packs = com.pckeyboard.ime.layout.LayoutRegistry.available
+        val enabled = prefs.enabledLanguages.toMutableSet()
+        for (pack in packs) {
+            val row = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            val label = android.widget.TextView(this).apply {
+                text = pack.displayName
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                )
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge)
+            }
+            val toggle = com.google.android.material.materialswitch.MaterialSwitch(this).apply {
+                isChecked = pack.id in enabled
+                setOnCheckedChangeListener { _, checked ->
+                    if (checked) enabled.add(pack.id) else enabled.remove(pack.id)
+                    // Always keep at least one enabled (English fallback).
+                    val safe = if (enabled.isEmpty()) {
+                        isChecked = true
+                        enabled.add(pack.id)
+                        enabled
+                    } else enabled
+                    prefs.enabledLanguages = safe
+                }
+            }
+            row.addView(label)
+            row.addView(toggle)
+            container.addView(row)
+        }
+        val hint = android.widget.TextView(this).apply {
+            text = getString(R.string.settings_section_languages_hint)
+            setPadding(dpToPx(12), 0, dpToPx(12), dpToPx(8))
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+        }
+        container.addView(hint)
+    }
+
+    private fun dpToPx(v: Int): Int =
+        (v * resources.displayMetrics.density).toInt()
 
     override fun onResume() {
         super.onResume()

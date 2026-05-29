@@ -39,11 +39,6 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var currentMode: LayoutMode = LayoutMode.MAIN
     private var keyboardView: KeyboardView? = null
 
-    companion object {
-        /** How many lines Page Up / Page Down skips. */
-        private const val PAGE_LINES = 10
-    }
-
     override fun onCreate() {
         super.onCreate()
         themeRepo = ThemeRepository(this)
@@ -68,22 +63,39 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     /**
-     * Cycle through every LayoutPack registered in [LayoutRegistry] using our
-     * own state, not Android's subtype switching. The system-level
-     * switchToNextInputMethod(true) only works when the user has manually
-     * enabled multiple subtypes in Settings → Languages & input, which is
-     * not the default — so it would do nothing on a fresh install and the
-     * globe key would feel dead.
+     * Globe tap cycle. Walks through the languages the user has enabled in
+     * Settings *and* the emoji-picker state, so the typical "one language
+     * + emoji" setup degenerates to a clean tap-to-toggle between language
+     * and emoji — exactly what the user expects. With multiple languages
+     * enabled it walks them in registry order, then emoji, then back to
+     * the first language.
      */
     private fun cycleLanguage() {
-        val packs = LayoutRegistry.available
+        val view = keyboardView ?: return
+        val enabled = kbPrefs.enabledLanguages
+        val packs = LayoutRegistry.available.filter { it.id in enabled }
         if (packs.isEmpty()) return
-        val idx = packs.indexOfFirst { it.id == currentLayoutId }
-        val next = packs[(idx + 1) % packs.size]
-        currentLayoutId = next.id
-        kbPrefs.currentLanguage = next.id
-        currentMode = LayoutMode.MAIN
-        bindCurrentLayout()
+
+        val states: List<String> = packs.map { it.id } + EMOJI_STATE
+        val current = if (view.isEmojiOpen()) EMOJI_STATE else currentLayoutId
+        val idx = states.indexOf(current).let { if (it < 0) states.size - 1 else it }
+        val next = states[(idx + 1) % states.size]
+
+        if (next == EMOJI_STATE) {
+            view.showEmojiPicker()
+        } else {
+            view.hideEmojiPicker()
+            currentLayoutId = next
+            kbPrefs.currentLanguage = next
+            currentMode = LayoutMode.MAIN
+            bindCurrentLayout()
+        }
+    }
+
+    companion object {
+        private const val EMOJI_STATE = "__emoji__"
+        /** How many lines Page Up / Page Down skips. */
+        private const val PAGE_LINES = 10
     }
 
     override fun onCreateInputView(): View {
@@ -244,12 +256,6 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onMenuAction(action: MenuAction) {
         when (action) {
-            is MenuAction.SwitchLanguage -> {
-                currentLayoutId = action.packId
-                kbPrefs.currentLanguage = action.packId
-                currentMode = LayoutMode.MAIN
-                bindCurrentLayout()
-            }
             MenuAction.PasteClipboard -> {
                 val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager
                 val clip = cm?.primaryClip ?: return

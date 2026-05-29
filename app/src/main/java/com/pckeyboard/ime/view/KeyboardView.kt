@@ -220,12 +220,9 @@ class KeyboardView @JvmOverloads constructor(
             handleTrackpadMove(rawX, rawY)
             return
         }
-        actionMenuView?.let { menu ->
-            val loc = IntArray(2)
-            menu.getLocationOnScreen(loc)
-            menu.selectedIndex = menu.findIndexForY(rawY - loc[1])
-            return
-        }
+        // Action menu doesn't slide-to-select any more — ignore finger
+        // movement while it's open.
+        if (actionMenuView != null) return
         val popup = popupView ?: return
         val loc = IntArray(2)
         popup.getLocationOnScreen(loc)
@@ -239,12 +236,10 @@ class KeyboardView @JvmOverloads constructor(
             endTrackpad()
             return
         }
-        actionMenuView?.let { menu ->
-            val selectedAction = menu.selectedIndex
-                .takeIf { it in menu.items.indices }
-                ?.let { menu.items[it].action }
-            dismissActionMenu()
-            if (selectedAction != null) listener?.onMenuAction(selectedAction)
+        if (actionMenuView != null) {
+            // Action menu uses tap-to-select: just let the user release the
+            // long-press; the menu stays up until they tap an item or tap
+            // outside.
             return
         }
         val selected = popupView?.let { p ->
@@ -273,30 +268,25 @@ class KeyboardView @JvmOverloads constructor(
     private fun showActionMenu(anchor: KeyView) {
         dismissActionMenu()
         val theme = theme ?: return
-        val items = buildList {
-            add(MenuItem("🌐", "English  (EN)", MenuAction.SwitchLanguage("en_US"),
-                isCurrent = currentLanguageId == "en_US"))
-            add(MenuItem("🌐", "Magyar  (HU)", MenuAction.SwitchLanguage("hu_HU"),
-                isCurrent = currentLanguageId == "hu_HU"))
-            add(MenuItem("🌐", "Deutsch  (DE)", MenuAction.SwitchLanguage("de_DE"),
-                isCurrent = currentLanguageId == "de_DE"))
-            add(MenuItem("🌐", "Español  (ES)", MenuAction.SwitchLanguage("es_ES"),
-                isCurrent = currentLanguageId == "es_ES"))
-            add(MenuItem("😀", "Emoji",            MenuAction.OpenEmoji))
-            add(MenuItem("📋", "Paste clipboard",  MenuAction.PasteClipboard))
-            add(MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings))
-        }
-        val menu = ActionMenuView(context, items, theme).apply {
-            selectedIndex = items.indexOfFirst { it.isCurrent }.coerceAtLeast(0)
-            elevation = dp(8f).toFloat()
-        }
+        val items = listOf(
+            MenuItem("😀", "Emoji",            MenuAction.OpenEmoji),
+            MenuItem("📋", "Paste clipboard",  MenuAction.PasteClipboard),
+            MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings)
+        )
+        val menu = ActionMenuView(context, items, theme) { action ->
+            dismissActionMenu()
+            listener?.onMenuAction(action)
+        }.apply { elevation = dp(8f).toFloat() }
         actionMenuView = menu
 
+        val w = menu.menuWidth
+        // Cap height to ~70% of the keyboard so the menu scrolls instead of
+        // being clipped when more items are added.
+        val maxH = (height * 0.7f).toInt().coerceAtLeast(dp(120f))
         menu.measure(
-            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
-            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+            MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST)
         )
-        val w = menu.measuredWidth
         val h = menu.measuredHeight
 
         val anchorLoc = IntArray(2)
@@ -309,7 +299,6 @@ class KeyboardView @JvmOverloads constructor(
         var x = centerX - w / 2
         if (x < 0) x = 0
         if (x + w > width) x = (width - w).coerceAtLeast(0)
-        // Open upwards so the bottom of the menu sits just above the globe.
         var y = anchorY - h - dp(4f)
         if (y < 0) y = 0
 
@@ -364,6 +353,26 @@ class KeyboardView @JvmOverloads constructor(
         emojiView?.let { removeView(it) }
         emojiView = null
         rowsContainer.visibility = VISIBLE
+    }
+
+    fun isEmojiOpen(): Boolean = emojiView != null
+
+    // Dismiss the action menu when the user taps anywhere outside it. The
+    // tap is consumed (return true) so the underlying key doesn't also
+    // activate from the same down-event.
+    override fun onInterceptTouchEvent(ev: android.view.MotionEvent): Boolean {
+        val menu = actionMenuView
+        if (menu != null && ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+            val x = ev.x.toInt()
+            val y = ev.y.toInt()
+            val outside = x < menu.left || x > menu.right ||
+                          y < menu.top  || y > menu.bottom
+            if (outside) {
+                dismissActionMenu()
+                return true
+            }
+        }
+        return super.onInterceptTouchEvent(ev)
     }
 
     // --- Alternate-char popup ---------------------------------------------

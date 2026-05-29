@@ -19,6 +19,8 @@
     <string name="settings_new_theme">New theme</string>
     <string name="settings_section_size">Size &amp; layout</string>
     <string name="settings_section_themes">Themes</string>
+    <string name="settings_section_languages">Languages</string>
+    <string name="settings_section_languages_hint">Tap the 🌐 key to cycle between enabled languages and the emoji picker.</string>
     <string name="settings_height">Height</string>
     <string name="settings_width">Width margin (each side)</string>
     <string name="settings_width_hint">Narrows the keyboard symmetrically from both sides — useful on tablets and unfolded foldables.</string>
