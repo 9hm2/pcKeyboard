@@ -550,11 +550,6 @@ class KeyboardView @JvmOverloads constructor(
                         Key(0, "", type = KeyType.BACKSPACE), modifiers
                     )
                 }
-                override fun onSpace() {
-                    this@KeyboardView.listener?.onKey(
-                        Key(' '.code, " ", type = KeyType.SPACE), modifiers
-                    )
-                }
                 override fun onSearch() {
                     showEmojiSearchHeader()
                 }

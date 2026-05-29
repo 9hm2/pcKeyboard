@@ -17,10 +17,11 @@ import com.pckeyboard.ime.theme.KeyboardTheme
 
 /**
  * Full-keyboard emoji picker. Tab row at the top with the category
- * icons and a permanent 🔍 search button pinned at the right edge; a
- * swipeable [ViewPager2] of category pages (each an 8-column scrollable
- * grid) in the middle; and a slim bottom control row with a centred
- * Space key and ABC + ⌫ on the right.
+ * icons (separated by faint divider lines) and a permanent 🔍 search
+ * button pinned at the right edge; a swipeable [ViewPager2] of category
+ * pages (each an 8-column scrollable grid) in the middle; and a slim
+ * bottom control row with ABC + ⌫ pulled apart on the right so each
+ * button has its own touch target.
  *
  * Tapping the search button fires [Listener.onSearch] — KeyboardView
  * responds by collapsing this picker, mounting a small search header
@@ -38,9 +39,9 @@ class EmojiView(
         fun onEmoji(emoji: String)
         fun onBack()
         fun onBackspace()
-        fun onSpace()
         fun onSearch()
     }
+
 
     var listener: Listener? = null
 
@@ -66,6 +67,7 @@ class EmojiView(
             orientation = LinearLayout.HORIZONTAL
         }
         for ((i, cat) in pages.withIndex()) {
+            if (i > 0) tabBar.addView(verticalDivider())
             val btn = TextView(context).apply {
                 text = cat.icon
                 gravity = Gravity.CENTER
@@ -92,6 +94,9 @@ class EmojiView(
         topRow.addView(tabScroller, LinearLayout.LayoutParams(
             0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
         ))
+        // A divider between the last visible tab and the pinned 🔍
+        // button so the search affordance reads as a separate slot.
+        topRow.addView(verticalDivider())
         val searchBtn = TextView(context).apply {
             text = "🔍"
             gravity = Gravity.CENTER
@@ -125,20 +130,24 @@ class EmojiView(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))
 
-        // 3. Bottom control row: Space in the middle, ABC + ⌫ on the
-        //    right. Symmetric padding on the left keeps Space visually
-        //    centred. Enter is omitted — the user can leave the picker
-        //    with ABC if they need to type a newline.
+        // 3. Bottom control row: ABC + ⌫ on the right, with a visible
+        //    gap between them so each button reads as its own touch
+        //    target. The left side is empty (just modifier-keyed
+        //    background) — Space isn't needed inside the emoji picker.
         val controlRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.modifierKeyColor)
+            setPadding(0, dp(6f), dp(8f), dp(6f))
         }
-        controlRow.addView(spacerView(2.0f))
-        controlRow.addView(controlButton("space", 5.0f) { listener?.onSpace() })
-        controlRow.addView(controlButton("ABC",   1.5f) { listener?.onBack() })
-        controlRow.addView(controlButton("⌫",    1.5f) { listener?.onBackspace() })
+        controlRow.addView(spacerView(1.0f))
+        controlRow.addView(outlinedControlButton("ABC") { listener?.onBack() })
+        controlRow.addView(View(context).apply {
+            // Visible breathing room between the two buttons.
+            layoutParams = LinearLayout.LayoutParams(dp(8f), LinearLayout.LayoutParams.MATCH_PARENT)
+        })
+        controlRow.addView(outlinedControlButton("⌫") { listener?.onBackspace() })
         root.addView(controlRow, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(46f)
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(48f)
         ))
 
         addView(root)
@@ -147,6 +156,47 @@ class EmojiView(
 
     private fun spacerView(weight: Float): View = View(context).apply {
         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, weight)
+    }
+
+    /** Thin vertical line used between category tabs and around the
+     *  pinned 🔍 button. Picks up the theme's [KeyboardTheme.dividerColor]
+     *  so it never looks like a hard solid edge. */
+    private fun verticalDivider(): View = View(context).apply {
+        setBackgroundColor(theme.dividerColor)
+        layoutParams = LinearLayout.LayoutParams(
+            dp(1f), LinearLayout.LayoutParams.MATCH_PARENT
+        ).apply {
+            topMargin = dp(10f)
+            bottomMargin = dp(10f)
+        }
+    }
+
+    /** Bottom-row control with a visible rounded-rect background so the
+     *  user can see exactly where to tap. */
+    private fun outlinedControlButton(label: String, onClick: () -> Unit): View {
+        val bg = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = dp(8f).toFloat()
+            setColor(theme.keyBackgroundColor)
+        }
+        return TextView(context).apply {
+            text = label
+            gravity = Gravity.CENTER
+            setTextColor(theme.modifierTextColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            isClickable = true
+            isFocusable = true
+            background = bg
+            setPadding(dp(20f), 0, dp(20f), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onClick()
+            }
+        }
     }
 
     private fun highlightTab(position: Int) {
