@@ -80,7 +80,7 @@ object HungarianLayout {
         Key.letter("x", alt = "#", popup = "#"),
         Key.letter("c", alt = "&", popup = "&çčć¢"),
         Key.letter("v", alt = "@", popup = "@"),
-        Key.letter("b", alt = "đ", popup = "đ"),
+        Key.letter("b", alt = "{", popup = "{đ"),
         Key.letter("n", alt = "}", popup = "}ñń"),
         Key.letter("m", alt = "µ", popup = "µ"),
         Key.char(",", "?", popup = "«‹„"),
