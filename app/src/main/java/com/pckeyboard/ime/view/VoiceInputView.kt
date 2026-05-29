@@ -271,7 +271,7 @@ class VoiceInputView(
                 // have a usable transcript and the user didn't cancel,
                 // commit it instead of throwing an error in their face.
                 if (!userCanceled && lastPartial.isNotBlank()) {
-                    onText(lastPartial)
+                    onText(VoicePunctuation.apply(lastPartial, recognitionLocale))
                     return
                 }
                 userCanceled = false
@@ -303,7 +303,7 @@ class VoiceInputView(
                     ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val text = candidates?.firstOrNull().orEmpty()
                 if (text.isNotEmpty()) {
-                    onText(text)
+                    onText(VoicePunctuation.apply(text, recognitionLocale))
                 }
                 listening = false
                 refreshUi()
