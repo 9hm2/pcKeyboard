@@ -375,16 +375,44 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         currentInputConnection?.commitText(c.toString(), 1)
     }
 
-    /** True when the focused editor declares `inputType == TYPE_NULL`,
-     *  which terminals (Termux, ConnectBot, …), game emulators and
-     *  some custom IME-driven views use to signal "I have no Android
-     *  text-edit model; send me raw KeyEvents instead of trying
-     *  InputConnection.commitText / setSelection". */
+    /** True when the focused editor looks like a terminal / shell / SSH
+     *  client — i.e. an editor that has no Android text-edit model and
+     *  reads raw KeyEvents to translate them into ANSI escape sequences.
+     *
+     *  Detection layers (any single hit wins):
+     *   1. `inputType == 0` / `TYPE_NULL` — the standard Termux pattern.
+     *   2. Known terminal-app package ids in [KNOWN_TERMINAL_PACKAGES].
+     *   3. Fuzzy substring match against the package id — NetHunter Term
+     *      forks, console / shell / connectbot / juicessh variants etc.
+     *      tend to have one of these tokens in their package name even
+     *      when they declare a non-zero inputType.
+     */
     private fun isTerminalLikeEditor(): Boolean {
-        // TYPE_NULL == 0; we also accept missing EditorInfo as a
-        // safer default for those cases (e.g. some immersive apps).
-        return (currentInputEditorInfo?.inputType ?: 0) == 0
+        val info = currentInputEditorInfo ?: return false
+        if (info.inputType == 0) return true
+        val pkg = info.packageName ?: return false
+        if (pkg in KNOWN_TERMINAL_PACKAGES) return true
+        val low = pkg.lowercase()
+        return low.contains("termux") ||
+            low.contains("nethunter") ||
+            low.contains("connectbot") ||
+            low.contains("juicessh") ||
+            low.endsWith(".term") ||
+            low.endsWith(".nhterm") ||
+            low.contains(".terminal") ||
+            low.contains(".shell")
     }
+
+    private val KNOWN_TERMINAL_PACKAGES: Set<String> = setOf(
+        "com.termux",
+        "com.termux.window",
+        "com.termoneplus",
+        "jackpal.androidterm",
+        "com.spartacusrex.spartacuside",
+        "com.offsec.nhterm",
+        "com.kali.nethunter.term",
+        "com.kpym.terminalemulator"
+    )
 
     private fun sendKey(keyCode: Int, modifiers: ModifierState) {
         val ic = currentInputConnection ?: return
