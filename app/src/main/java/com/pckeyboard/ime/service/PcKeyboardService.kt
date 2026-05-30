@@ -586,9 +586,19 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      * Use [InputConnection.performEditorAction] for the action the editor
      * declared (Send / Done / Search / Next / ...), or commit a literal
      * newline if the editor wants Enter to be a newline.
+     *
+     * Terminal emulators (Termux, ConnectBot, …) declare `TYPE_NULL` and
+     * read raw KeyEvents instead — for those we always send a real
+     * KEYCODE_ENTER so the terminal's read loop sees it (the "press
+     * Enter to restart" prompt at the end of a Termux session, for
+     * example, needs a real key event to dismiss).
      */
     private fun handleEnter(modifiers: ModifierState) {
         val ic = currentInputConnection ?: return
+        if (isTerminalLikeEditor()) {
+            sendKey(KeyEvent.KEYCODE_ENTER, modifiers)
+            return
+        }
         // Any modifier on Enter means "newline" rather than "submit form"
         // (Shift+Enter is the universal "newline in a chat field" combo).
         if (modifiers.isShiftActive() || modifiers.shouldSendAsKeyEvent()) {
