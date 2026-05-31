@@ -15,11 +15,16 @@ import com.pckeyboard.ime.util.directBootSafeContext
  */
 class ThemeRepository(context: Context) {
 
-    // directBootSafeContext() falls back to device-protected storage if
-    // the user hasn't unlocked yet, so the IME can still render a
-    // default theme on the lock screen.
-    private val prefs: SharedPreferences =
-        PreferenceManager.getDefaultSharedPreferences(context.directBootSafeContext())
+    private val appContext = context.applicationContext
+
+    // Recomputed on every access so once the user unlocks after a
+    // reboot we swap from the (empty) device-protected store back to
+    // the real credential-encrypted one and the saved theme reappears.
+    // See KeyboardPrefs for the same pattern.
+    private val prefs: SharedPreferences
+        get() = PreferenceManager.getDefaultSharedPreferences(
+            appContext.directBootSafeContext()
+        )
 
     fun getSelectedTheme(): KeyboardTheme {
         val id = prefs.getString(KEY_SELECTED, Themes.LIGHT.id) ?: Themes.LIGHT.id

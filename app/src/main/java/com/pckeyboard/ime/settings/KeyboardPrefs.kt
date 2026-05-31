@@ -1,6 +1,7 @@
 package com.pckeyboard.ime.settings
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
 import com.pckeyboard.ime.util.directBootSafeContext
 
@@ -12,11 +13,20 @@ import com.pckeyboard.ime.util.directBootSafeContext
  */
 class KeyboardPrefs(context: Context) {
 
-    // directBootSafeContext() falls back to device-protected storage if
-    // the user hasn't unlocked yet (so the IME can render on the lock
-    // screen instead of crashing on a CE-storage read).
-    private val prefs =
-        PreferenceManager.getDefaultSharedPreferences(context.directBootSafeContext())
+    private val appContext = context.applicationContext
+
+    // Recomputed on every access so that after the user unlocks the
+    // device for the first time after boot we switch from the empty
+    // device-protected store back to the real credential-encrypted
+    // store with the saved settings, without needing to recreate the
+    // KeyboardPrefs instance. Caching the SharedPreferences in a val
+    // would freeze us on whatever context we had at construction
+    // time, which is the original cause of "settings forgotten after
+    // a reboot".
+    private val prefs: SharedPreferences
+        get() = PreferenceManager.getDefaultSharedPreferences(
+            appContext.directBootSafeContext()
+        )
 
     /** Multiplier applied to the keyboard height, clamped to [0.5, 1.6]. */
     var heightScale: Float

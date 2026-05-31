@@ -13,8 +13,11 @@ import com.pckeyboard.ime.util.directBootSafeContext
  */
 class EmojiUsageTracker(context: Context) {
 
-    private val prefs =
-        PreferenceManager.getDefaultSharedPreferences(context.directBootSafeContext())
+    private val appContext = context.applicationContext
+    private val prefs
+        get() = PreferenceManager.getDefaultSharedPreferences(
+            appContext.directBootSafeContext()
+        )
 
     fun recordUse(emoji: String) {
         if (emoji.isEmpty()) return

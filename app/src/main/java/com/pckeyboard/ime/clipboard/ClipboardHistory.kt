@@ -12,8 +12,11 @@ import org.json.JSONArray
  */
 class ClipboardHistory(context: Context) {
 
-    private val prefs =
-        PreferenceManager.getDefaultSharedPreferences(context.directBootSafeContext())
+    private val appContext = context.applicationContext
+    private val prefs
+        get() = PreferenceManager.getDefaultSharedPreferences(
+            appContext.directBootSafeContext()
+        )
 
     /** Newest first. */
     fun all(): List<String> {

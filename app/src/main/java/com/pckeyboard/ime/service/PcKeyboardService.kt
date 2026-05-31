@@ -159,6 +159,15 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        // Re-read the persisted language id on every session. The IME
+        // may have first started during Direct Boot (lock screen), at
+        // which point credential-encrypted storage was empty and we
+        // defaulted to en_US — once the user unlocks, the real saved
+        // language becomes readable and we pick it up here.
+        val stored = kbPrefs.currentLanguage
+        if (stored != currentLayoutId && LayoutRegistry.get(stored).id == stored) {
+            currentLayoutId = stored
+        }
         // Refresh theme + sizing prefs on each session — user may have changed
         // them since the IME was last shown.
         keyboardView?.updateTheme(themeRepo.getSelectedTheme())
