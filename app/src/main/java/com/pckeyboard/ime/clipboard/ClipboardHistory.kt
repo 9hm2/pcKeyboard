@@ -2,6 +2,7 @@ package com.pckeyboard.ime.clipboard
 
 import android.content.Context
 import androidx.preference.PreferenceManager
+import com.pckeyboard.ime.util.directBootSafeContext
 import org.json.JSONArray
 
 /**
@@ -12,7 +13,7 @@ import org.json.JSONArray
 class ClipboardHistory(context: Context) {
 
     private val prefs =
-        PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+        PreferenceManager.getDefaultSharedPreferences(context.directBootSafeContext())
 
     /** Newest first. */
     fun all(): List<String> {

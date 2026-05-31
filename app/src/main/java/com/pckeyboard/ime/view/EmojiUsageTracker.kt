@@ -2,6 +2,7 @@ package com.pckeyboard.ime.view
 
 import android.content.Context
 import androidx.preference.PreferenceManager
+import com.pckeyboard.ime.util.directBootSafeContext
 
 /**
  * Persistent emoji frequency tracker. Each commit increments a counter
@@ -13,7 +14,7 @@ import androidx.preference.PreferenceManager
 class EmojiUsageTracker(context: Context) {
 
     private val prefs =
-        PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+        PreferenceManager.getDefaultSharedPreferences(context.directBootSafeContext())
 
     fun recordUse(emoji: String) {
         if (emoji.isEmpty()) return

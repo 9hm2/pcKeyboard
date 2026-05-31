@@ -3,6 +3,7 @@ package com.pckeyboard.ime.theme
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
+import com.pckeyboard.ime.util.directBootSafeContext
 
 /**
  * Persists the selected theme and any user-built custom themes.
@@ -14,8 +15,11 @@ import androidx.preference.PreferenceManager
  */
 class ThemeRepository(context: Context) {
 
+    // directBootSafeContext() falls back to device-protected storage if
+    // the user hasn't unlocked yet, so the IME can still render a
+    // default theme on the lock screen.
     private val prefs: SharedPreferences =
-        PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+        PreferenceManager.getDefaultSharedPreferences(context.directBootSafeContext())
 
     fun getSelectedTheme(): KeyboardTheme {
         val id = prefs.getString(KEY_SELECTED, Themes.LIGHT.id) ?: Themes.LIGHT.id

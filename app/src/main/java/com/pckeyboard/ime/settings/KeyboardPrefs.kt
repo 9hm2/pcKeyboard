@@ -2,6 +2,7 @@ package com.pckeyboard.ime.settings
 
 import android.content.Context
 import androidx.preference.PreferenceManager
+import com.pckeyboard.ime.util.directBootSafeContext
 
 /**
  * User-tunable layout sizing: height scale (so the keyboard can grow / shrink
@@ -11,8 +12,11 @@ import androidx.preference.PreferenceManager
  */
 class KeyboardPrefs(context: Context) {
 
+    // directBootSafeContext() falls back to device-protected storage if
+    // the user hasn't unlocked yet (so the IME can render on the lock
+    // screen instead of crashing on a CE-storage read).
     private val prefs =
-        PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+        PreferenceManager.getDefaultSharedPreferences(context.directBootSafeContext())
 
     /** Multiplier applied to the keyboard height, clamped to [0.5, 1.6]. */
     var heightScale: Float
