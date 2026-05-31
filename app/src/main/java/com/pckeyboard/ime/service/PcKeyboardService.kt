@@ -70,7 +70,18 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         themeRepo = ThemeRepository(this)
         kbPrefs = KeyboardPrefs(this)
         currentLayoutId = kbPrefs.currentLanguage
-        UpdateScheduler.schedule(this)
+        // WorkManager initialises through credential-encrypted storage,
+        // which is unreachable during Direct Boot (the window between
+        // device boot and the first user unlock when the IME also has
+        // to be usable). Skip the auto-update scheduling in that window
+        // — it'll get scheduled on the next IME create after unlock.
+        val um = getSystemService(USER_SERVICE) as? android.os.UserManager
+        if (um == null ||
+            android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N ||
+            um.isUserUnlocked
+        ) {
+            UpdateScheduler.schedule(this)
+        }
         (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)
             ?.addPrimaryClipChangedListener(clipListener)
     }
