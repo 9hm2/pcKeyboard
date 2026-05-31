@@ -2,31 +2,80 @@ package com.pckeyboard.ime.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import androidx.preference.PreferenceManager
-import com.pckeyboard.ime.util.directBootSafeContext
 
 /**
  * User-tunable layout sizing: height scale (so the keyboard can grow / shrink
  * vertically), horizontal padding (so it can be narrowed symmetrically from
  * both sides — useful on tablets / unfolded foldables), and a split toggle
  * which splits every row at its centre on wide screens.
+ *
+ * All keyboard preferences live in **device-protected storage** so they're
+ * also readable on the lock screen — the IME has to be usable to actually
+ * type the PIN after a reboot, and device-protected storage is the only
+ * SharedPreferences area accessible in that window. The first time this
+ * class is constructed it pulls existing values forward from the old
+ * credential-encrypted store so users updating from earlier versions
+ * keep their settings.
  */
 class KeyboardPrefs(context: Context) {
 
     private val appContext = context.applicationContext
 
-    // Recomputed on every access so that after the user unlocks the
-    // device for the first time after boot we switch from the empty
-    // device-protected store back to the real credential-encrypted
-    // store with the saved settings, without needing to recreate the
-    // KeyboardPrefs instance. Caching the SharedPreferences in a val
-    // would freeze us on whatever context we had at construction
-    // time, which is the original cause of "settings forgotten after
-    // a reboot".
-    private val prefs: SharedPreferences
-        get() = PreferenceManager.getDefaultSharedPreferences(
-            appContext.directBootSafeContext()
-        )
+    private val storeContext: Context =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            appContext.createDeviceProtectedStorageContext()
+        } else {
+            appContext
+        }
+
+    private val prefs: SharedPreferences =
+        PreferenceManager.getDefaultSharedPreferences(storeContext)
+
+    init {
+        migrateFromCredentialEncryptedStorageOnce()
+    }
+
+    /** Copies every user-settings key from the legacy credential-
+     *  encrypted SharedPreferences into device-protected storage so the
+     *  IME has them on the lock screen too. Runs exactly once per
+     *  install — guarded by a flag inside DE storage. Sensitive
+     *  per-history data (clipboard, emoji usage tracker) is filtered
+     *  out so those classes keep behaving as before in CE storage. */
+    private fun migrateFromCredentialEncryptedStorageOnce() {
+        if (storeContext === appContext) return // SDK < N — nowhere to migrate to.
+        if (prefs.getBoolean(KEY_MIGRATED_V1, false)) return
+        val cePrefs = PreferenceManager.getDefaultSharedPreferences(appContext)
+        val all = try { cePrefs.all } catch (_: Throwable) { null }
+        if (all.isNullOrEmpty()) {
+            prefs.edit().putBoolean(KEY_MIGRATED_V1, true).apply()
+            return
+        }
+        val edit = prefs.edit()
+        for ((key, value) in all) {
+            if (!shouldCopyToDeviceStorage(key)) continue
+            when (value) {
+                is String  -> edit.putString(key, value)
+                is Int     -> edit.putInt(key, value)
+                is Long    -> edit.putLong(key, value)
+                is Float   -> edit.putFloat(key, value)
+                is Boolean -> edit.putBoolean(key, value)
+                is Set<*>  -> @Suppress("UNCHECKED_CAST")
+                    edit.putStringSet(key, value as Set<String>)
+            }
+        }
+        edit.putBoolean(KEY_MIGRATED_V1, true).apply()
+    }
+
+    private fun shouldCopyToDeviceStorage(key: String): Boolean {
+        // Clipboard history + emoji usage tracker stay credential-
+        // encrypted — they're personal-content stores that shouldn't be
+        // readable before the user has unlocked their device.
+        if (key == "clip_history_json") return false
+        if (key.startsWith("emoji_n_") || key.startsWith("emoji_t_")) return false
+        return true
+    }
 
     /** Multiplier applied to the keyboard height, clamped to [0.5, 1.6]. */
     var heightScale: Float
@@ -160,21 +209,23 @@ class KeyboardPrefs(context: Context) {
         private const val KEY_SPLIT = "kb_split_enabled"
         private const val KEY_SPLIT_GAP = "kb_split_gap_weight"
         private const val KEY_LP_DELAY = "kb_long_press_delay_ms"
-        private const val KEY_TRACKPAD_SENS = "kb_trackpad_sensitivity"
+        private const val KEY_LANG = "kb_current_language"
+        private const val KEY_ENABLED_LANGS = "kb_enabled_languages"
+        private const val KEY_AUTO_UPDATE = "kb_auto_update_enabled"
+        private const val KEY_AUTO_UPDATE_HOURS = "kb_auto_update_hours"
         private const val KEY_SHOW_FN_ROW = "kb_show_function_row"
         private const val KEY_SIDE_SPLIT = "kb_side_split_enabled"
         private const val KEY_RIGHT_OF_SPACE = "kb_right_of_space_action"
+        private const val KEY_TRACKPAD_SENS = "kb_trackpad_sensitivity"
         /** Weight of the big empty centre when sideSplit is on. */
         const val SIDE_SPLIT_GAP_WEIGHT = 5f
 
         const val RIGHT_OF_SPACE_SYMBOLS = "symbols"
         const val RIGHT_OF_SPACE_EMOJI = "emoji"
-        private const val KEY_LANG = "kb_current_language"
-        private const val KEY_ENABLED_LANGS = "kb_enabled_languages"
-        private const val KEY_AUTO_UPDATE = "kb_auto_update_enabled"
-        private const val KEY_AUTO_UPDATE_HOURS = "kb_auto_update_hours"
 
         /** Threshold above which split mode is applied. */
         const val SPLIT_MIN_WIDTH_DP = 600
+
+        private const val KEY_MIGRATED_V1 = "kb_migrated_to_de_v1"
     }
 }

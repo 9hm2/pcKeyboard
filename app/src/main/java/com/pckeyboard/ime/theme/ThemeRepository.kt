@@ -2,8 +2,8 @@ package com.pckeyboard.ime.theme
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import androidx.preference.PreferenceManager
-import com.pckeyboard.ime.util.directBootSafeContext
 
 /**
  * Persists the selected theme and any user-built custom themes.
@@ -12,19 +12,26 @@ import com.pckeyboard.ime.util.directBootSafeContext
  *  - "selected_theme_id"   : id of the active theme
  *  - "custom_theme_ids"    : comma-separated list of saved custom theme ids
  *  - "theme_<id>_<field>"  : individual field of a custom theme
+ *
+ * Lives in **device-protected storage** so the user's theme is honoured
+ * on the lock screen too — see KeyboardPrefs for the rationale and the
+ * one-time CE→DE migration that brings legacy installs forward (theme
+ * keys are migrated by KeyboardPrefs since they're not in its
+ * filter-out list).
  */
 class ThemeRepository(context: Context) {
 
     private val appContext = context.applicationContext
 
-    // Recomputed on every access so once the user unlocks after a
-    // reboot we swap from the (empty) device-protected store back to
-    // the real credential-encrypted one and the saved theme reappears.
-    // See KeyboardPrefs for the same pattern.
-    private val prefs: SharedPreferences
-        get() = PreferenceManager.getDefaultSharedPreferences(
-            appContext.directBootSafeContext()
-        )
+    private val storeContext: Context =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            appContext.createDeviceProtectedStorageContext()
+        } else {
+            appContext
+        }
+
+    private val prefs: SharedPreferences =
+        PreferenceManager.getDefaultSharedPreferences(storeContext)
 
     fun getSelectedTheme(): KeyboardTheme {
         val id = prefs.getString(KEY_SELECTED, Themes.LIGHT.id) ?: Themes.LIGHT.id
