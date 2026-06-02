@@ -433,6 +433,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (pkg in KNOWN_TERMINAL_PACKAGES) return true
         val low = pkg.lowercase()
         return low.contains("termux") ||
+            low.contains("neoterm") ||
+            low.contains(".x11") ||
             low.contains("nethunter") ||
             low.contains("connectbot") ||
             low.contains("juicessh") ||
@@ -445,6 +447,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private val KNOWN_TERMINAL_PACKAGES: Set<String> = setOf(
         "com.termux",
         "com.termux.window",
+        "com.termux.x11",
+        "io.neoterm",
         "com.termoneplus",
         "jackpal.androidterm",
         "com.spartacusrex.spartacuside",
@@ -457,8 +461,45 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val ic = currentInputConnection ?: return
         val meta = modifiers.toMetaState()
         val now = System.currentTimeMillis()
+        // Terminal / X11 hosts (e.g. NeoTerm's embedded X server) read modifiers
+        // from real Ctrl/Alt/Shift key-down/up events, not from a single event's
+        // metaState — their native input bridge drops metaState entirely. So in
+        // a terminal-like editor we frame the key with standalone modifier
+        // presses, exactly the way a physical keyboard would, so combos like
+        // Ctrl+C actually arrive as Ctrl+C. Normal Android editors keep the
+        // plain metaState-on-one-event behaviour.
+        //
+        // Only Ctrl/Alt/Meta combos need this framing. Plain navigation is left
+        // alone so that Caps Lock (which counts as "shift active") doesn't turn
+        // every arrow into Shift+arrow.
+        val needsRealModifiers =
+            modifiers.isCtrlActive() || modifiers.isAltActive() || modifiers.isMetaActive()
+        val wrapModifiers = needsRealModifiers && isTerminalLikeEditor()
+        if (wrapModifiers) sendModifierKeys(modifiers, down = true, meta = meta)
         ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta))
         ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, meta))
+        if (wrapModifiers) sendModifierKeys(modifiers, down = false, meta = meta)
+    }
+
+    /**
+     * Emit standalone modifier key events for the currently active modifiers.
+     * Pressed in a fixed order on the way down and released in reverse on the
+     * way up so the host sees a well-formed modifier stack.
+     */
+    private fun sendModifierKeys(modifiers: ModifierState, down: Boolean, meta: Int) {
+        val ic = currentInputConnection ?: return
+        val action = if (down) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP
+        val now = System.currentTimeMillis()
+        val codes = buildList {
+            if (modifiers.isShiftActive()) add(KeyEvent.KEYCODE_SHIFT_LEFT)
+            if (modifiers.isCtrlActive()) add(KeyEvent.KEYCODE_CTRL_LEFT)
+            if (modifiers.isAltActive()) add(KeyEvent.KEYCODE_ALT_LEFT)
+            if (modifiers.isMetaActive()) add(KeyEvent.KEYCODE_META_LEFT)
+        }
+        val ordered = if (down) codes else codes.asReversed()
+        for (code in ordered) {
+            ic.sendKeyEvent(KeyEvent(now, now, action, code, 0, meta))
+        }
     }
 
     private fun switchSymbols() {
