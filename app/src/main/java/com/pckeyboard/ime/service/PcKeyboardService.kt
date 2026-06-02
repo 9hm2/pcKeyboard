@@ -183,7 +183,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // matching theme for this session; otherwise fall back to the user's
         // saved theme. Recomputed on every session so it tracks the terminal's
         // current colour scheme.
-        sessionTheme = TerminalThemeBridge.fromExtras(info?.extras)
+        sessionTheme = TerminalThemeBridge.fromExtras(info?.extras, themeRepo.getSelectedTheme())
         // Refresh theme + sizing prefs on each session — user may have changed
         // them since the IME was last shown.
         keyboardView?.updateTheme(activeTheme())

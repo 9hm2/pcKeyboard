@@ -30,13 +30,18 @@ object TerminalThemeBridge {
     /**
      * Builds a theme from the given extras, or `null` when the host did not
      * advertise terminal colours (i.e. this is not a NeoTerm session).
+     *
+     * Only colours are taken from the terminal; the keyboard's own layout
+     * geometry (corner radius, spacing, elevation) is preserved from [base]
+     * — the user's currently selected theme — so entering NeoTerm recolours
+     * the keyboard without reshaping it.
      */
-    fun fromExtras(extras: Bundle?): KeyboardTheme? {
+    fun fromExtras(extras: Bundle?, base: KeyboardTheme): KeyboardTheme? {
         if (extras == null) return null
         if (!extras.containsKey(EXTRA_BACKGROUND) || !extras.containsKey(EXTRA_FOREGROUND)) return null
         val background = opaque(extras.getInt(EXTRA_BACKGROUND))
         val foreground = opaque(extras.getInt(EXTRA_FOREGROUND))
-        return derive(background, foreground)
+        return derive(background, foreground, base)
     }
 
     /**
@@ -45,9 +50,11 @@ object TerminalThemeBridge {
      * The keyboard surface is the terminal background and key text is the
      * terminal foreground. Every other shade is a small blend between the two
      * so the keyboard stays visually anchored to the terminal; nothing is
-     * pulled from outside the supplied pair.
+     * pulled from outside the supplied pair. The layout geometry — corner
+     * radius, key spacing and elevation — is carried over from [base] rather
+     * than redefined, so only the colours change in NeoTerm.
      */
-    fun derive(background: Int, foreground: Int): KeyboardTheme {
+    fun derive(background: Int, foreground: Int, base: KeyboardTheme): KeyboardTheme {
         val dark = ColorUtils.calculateLuminance(background) < 0.5
 
         // Keys sit almost flush with the background — only a hair towards the
@@ -83,9 +90,11 @@ object TerminalThemeBridge {
             accentColor = accent,
             accentTextColor = accentText,
             dividerColor = divider,
-            keyCornerRadiusDp = 10,
-            keyElevationDp = if (dark) 0 else 1,
-            keySpacingDp = 3
+            // Keep the user's own layout geometry — only the colours come
+            // from the terminal.
+            keyCornerRadiusDp = base.keyCornerRadiusDp,
+            keyElevationDp = base.keyElevationDp,
+            keySpacingDp = base.keySpacingDp
         )
     }
 
