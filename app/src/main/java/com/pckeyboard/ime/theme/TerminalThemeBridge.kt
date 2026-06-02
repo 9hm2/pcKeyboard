@@ -67,11 +67,11 @@ object TerminalThemeBridge {
         // Hint text dimmed towards the background.
         val secondary = blend(foreground, background, 0.40f)
 
-        // Accent derived purely from the terminal's own colours: a small nudge
-        // of the background towards the foreground. Special keys (space / enter
-        // / backspace, locked modifiers) then read as part of the same palette
-        // — a minimal deviation, not a foreign highlight.
-        val accent = blend(background, foreground, 0.18f)
+        // Accent derived purely from the terminal's own colours: a very small
+        // nudge of the background towards the foreground. Special keys (space /
+        // enter / backspace, locked modifiers) stay almost flush with the
+        // terminal background — just distinguishable, not a foreign highlight.
+        val accent = blend(background, foreground, 0.09f)
         // Pick whichever source colour stays legible on top of the accent.
         val accentText =
             if (contrast(accent, foreground) >= contrast(accent, background)) foreground else background
