@@ -50,20 +50,21 @@ object TerminalThemeBridge {
     fun derive(background: Int, foreground: Int): KeyboardTheme {
         val dark = ColorUtils.calculateLuminance(background) < 0.5
 
-        // Keys lift slightly off the background towards the foreground so they
-        // read as keys without introducing any new hue.
-        val keyBg = blend(background, foreground, 0.08f)
-        val keyPressed = blend(background, foreground, 0.20f)
-        val modifierBg = blend(background, foreground, 0.04f)
-        val divider = blend(background, foreground, 0.12f)
+        // Keys sit almost flush with the background — only a hair towards the
+        // foreground so an edge is visible without the keys reading as a
+        // different colour from the terminal.
+        val keyBg = blend(background, foreground, 0.035f)
+        val keyPressed = blend(background, foreground, 0.11f)
+        val modifierBg = blend(background, foreground, 0.015f)
+        val divider = blend(background, foreground, 0.06f)
         // Hint text dimmed towards the background.
         val secondary = blend(foreground, background, 0.40f)
 
-        // Accent derived purely from the terminal's own colours: nudge the
-        // background a third of the way towards the foreground. Special keys
-        // (space / enter / backspace, locked modifiers) then read as part of
-        // the same palette — a minimal deviation, not a foreign highlight.
-        val accent = blend(background, foreground, 0.32f)
+        // Accent derived purely from the terminal's own colours: a small nudge
+        // of the background towards the foreground. Special keys (space / enter
+        // / backspace, locked modifiers) then read as part of the same palette
+        // — a minimal deviation, not a foreign highlight.
+        val accent = blend(background, foreground, 0.18f)
         // Pick whichever source colour stays legible on top of the accent.
         val accentText =
             if (contrast(accent, foreground) >= contrast(accent, background)) foreground else background
