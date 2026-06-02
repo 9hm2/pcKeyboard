@@ -22,6 +22,8 @@ import com.pckeyboard.ime.model.LayoutMode
 import com.pckeyboard.ime.model.ModifierState
 import com.pckeyboard.ime.settings.KeyboardPrefs
 import com.pckeyboard.ime.settings.SettingsActivity
+import com.pckeyboard.ime.theme.KeyboardTheme
+import com.pckeyboard.ime.theme.TerminalThemeBridge
 import com.pckeyboard.ime.theme.ThemeRepository
 import com.pckeyboard.ime.updater.UpdateScheduler
 import com.pckeyboard.ime.view.KeyboardView
@@ -53,6 +55,15 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var currentLayoutId: String = "en_US"
     private var currentMode: LayoutMode = LayoutMode.MAIN
     private var keyboardView: KeyboardView? = null
+
+    // When the keyboard is opened by a co-operating terminal (NeoTerm) it
+    // advertises its colours through EditorInfo.extras; we derive a theme from
+    // them and use it for the lifetime of that input session instead of the
+    // user's persisted theme. Null = no terminal colours, use the saved theme.
+    private var sessionTheme: KeyboardTheme? = null
+
+    /** Theme to render with: the terminal-derived one if present, else the saved theme. */
+    private fun activeTheme(): KeyboardTheme = sessionTheme ?: themeRepo.getSelectedTheme()
 
     private val clipListener = ClipboardManager.OnPrimaryClipChangedListener {
         val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return@OnPrimaryClipChangedListener
@@ -168,9 +179,14 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (stored != currentLayoutId && LayoutRegistry.get(stored).id == stored) {
             currentLayoutId = stored
         }
+        // If the host is a terminal that handed us its colours, derive a
+        // matching theme for this session; otherwise fall back to the user's
+        // saved theme. Recomputed on every session so it tracks the terminal's
+        // current colour scheme.
+        sessionTheme = TerminalThemeBridge.fromExtras(info?.extras)
         // Refresh theme + sizing prefs on each session — user may have changed
         // them since the IME was last shown.
-        keyboardView?.updateTheme(themeRepo.getSelectedTheme())
+        keyboardView?.updateTheme(activeTheme())
         bindCurrentLayout()
         keyboardView?.applySizingPrefs()
         // If the user finished the clipboard editor with Send, commit the
@@ -189,6 +205,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      */
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
+        // Drop any terminal-derived theme so the next (possibly non-terminal)
+        // session starts from the user's saved theme.
+        sessionTheme = null
         currentMode = LayoutMode.MAIN
         keyboardView?.hideEmojiPicker()
         keyboardView?.hideEmojiSearchHeader()
@@ -272,7 +291,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             ),
             kbPrefs.rightOfSpaceAction
         )
-        view.bind(finalLayout, themeRepo.getSelectedTheme())
+        view.bind(finalLayout, activeTheme())
     }
 
     /** Rewrites the control-row "123" SYMBOL_SWITCH key into whatever the
