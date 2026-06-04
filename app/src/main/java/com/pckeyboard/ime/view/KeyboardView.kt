@@ -171,14 +171,6 @@ class KeyboardView @JvmOverloads constructor(
         }
     }
 
-    /** TEMP diagnostic: the name of the theme currently bound to this view. */
-    val debugThemeName: String get() {
-        val t = theme
-        val rc = (rowsContainer.background as? android.graphics.drawable.ColorDrawable)?.color
-        fun hex(v: Int?) = v?.let { Integer.toHexString(it) } ?: "?"
-        return "${t?.name ?: "null"}(bg=${hex(t?.backgroundColor)} keyBg=${hex(t?.keyBackgroundColor)} rowsBg=${hex(rc)} keys=${rowsContainer.childCount})"
-    }
-
     /** Clears any ONCE / LOCKED state on every modifier (Shift, Ctrl,
      *  Alt, Caps, …). Called from the IME service on input dismiss so
      *  the next session starts fresh. */

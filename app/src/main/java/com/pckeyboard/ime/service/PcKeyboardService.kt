@@ -165,7 +165,6 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             android.graphics.drawable.ColorDrawable(0)
         )
         bindCurrentLayout()
-        kbDebug("onCreateInputView inst=${System.identityHashCode(view)} bound=${view.debugThemeName} session=${sessionTheme?.name ?: "null"}")
         return view
     }
 
@@ -184,19 +183,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // matching theme for this session; otherwise fall back to the user's
         // saved theme. Recomputed on every session so it tracks the terminal's
         // current colour scheme.
-        val extras = info?.extras
-        sessionTheme = TerminalThemeBridge.fromExtras(extras, themeRepo.getSelectedTheme())
-        kbDebug(
-            "onStartInputView restarting=$restarting pkg=${info?.packageName} type=${info?.inputType} " +
-                "hasExtras=${extras != null} hasBg=${extras?.containsKey("com.pckeyboard.ime.theme.BACKGROUND")} " +
-                "theme=${sessionTheme?.name ?: "saved"} kbView=${keyboardView != null}"
-        )
+        sessionTheme = TerminalThemeBridge.fromExtras(info?.extras, themeRepo.getSelectedTheme())
         // Refresh theme + sizing prefs on each session — user may have changed
         // them since the IME was last shown.
         keyboardView?.updateTheme(activeTheme())
         bindCurrentLayout()
         keyboardView?.applySizingPrefs()
-        kbDebug("  applied inst=${System.identityHashCode(keyboardView)} bound=${keyboardView?.debugThemeName} active=${activeTheme().name}")
         // If the user finished the clipboard editor with Send, commit the
         // edited text and persist the replacement into the history.
         ClipboardEditorBridge.consume()?.let { r ->
@@ -216,41 +208,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      */
     override fun onWindowShown() {
         super.onWindowShown()
-        val extras = currentInputEditorInfo?.extras
-        val derived = TerminalThemeBridge.fromExtras(extras, themeRepo.getSelectedTheme())
-        kbDebug(
-            "onWindowShown pkg=${currentInputEditorInfo?.packageName} hasExtras=${extras != null} " +
-                "hasBg=${extras?.containsKey("com.pckeyboard.ime.theme.BACKGROUND")} derived=${derived?.name ?: "null"}"
-        )
-        // Always re-apply when a terminal theme is available: the keyboard view
-        // may have been built with the saved theme before the colors arrived, so
-        // even if sessionTheme already equals the derived one we still force a
-        // repaint here. The first session must end up themed without waiting for
-        // another input restart (which is why a recents round-trip was needed).
-        if (derived != null) {
-            sessionTheme = derived
-            keyboardView?.updateTheme(activeTheme())
-            bindCurrentLayout()
-            kbDebug("  applied inst=${System.identityHashCode(keyboardView)} bound=${keyboardView?.debugThemeName} active=${activeTheme().name}")
-        }
-    }
-
-    /**
-     * TEMP diagnostic: an app sandbox can't read another app's logcat and the
-     * device isn't rooted, so mirror the key handoff events into a private
-     * prefs ring buffer that the keyboard's own Settings screen can display.
-     */
-    private fun kbDebug(line: String) {
-        android.util.Log.d("KbTheme", line)
-        try {
-            val sp = getSharedPreferences("kbtheme_debug", MODE_PRIVATE)
-            val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
-                .format(java.util.Date())
-            val prev = sp.getString("log", "").orEmpty()
-            val kept = (prev.split("\n").filter { it.isNotBlank() } + "$ts $line").takeLast(60)
-            sp.edit().putString("log", kept.joinToString("\n")).apply()
-        } catch (_: Exception) {
-        }
+        val derived = TerminalThemeBridge.fromExtras(
+            currentInputEditorInfo?.extras, themeRepo.getSelectedTheme()
+        ) ?: return
+        sessionTheme = derived
+        keyboardView?.updateTheme(activeTheme())
+        bindCurrentLayout()
     }
 
     /**
@@ -260,7 +223,6 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      */
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
-        kbDebug("onFinishInputView finishing=$finishingInput clearing session (was ${sessionTheme?.name ?: "null"})")
         // Drop any terminal-derived theme so the next (possibly non-terminal)
         // session starts from the user's saved theme.
         sessionTheme = null

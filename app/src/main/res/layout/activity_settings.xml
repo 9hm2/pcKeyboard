@@ -181,14 +181,6 @@
                             android:layout_marginTop="8dp"
                             android:text="@string/settings_install_permission_hint"
                             android:textAppearance="?attr/textAppearanceCaption" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnThemeDebug"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="KbTheme debug log" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
