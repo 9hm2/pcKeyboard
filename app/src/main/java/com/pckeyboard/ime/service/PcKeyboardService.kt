@@ -247,7 +247,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
                 .format(java.util.Date())
             val prev = sp.getString("log", "").orEmpty()
-            val kept = (prev.split("\n").filter { it.isNotBlank() } + "$ts $line").takeLast(15)
+            val kept = (prev.split("\n").filter { it.isNotBlank() } + "$ts $line").takeLast(60)
             sp.edit().putString("log", kept.joinToString("\n")).apply()
         } catch (_: Exception) {
         }
