@@ -194,18 +194,6 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         )
         sessionTheme = TerminalThemeBridge.fromExtras(extras, themeRepo.getSelectedTheme())
         android.util.Log.d("KbTheme", "onStartInputView: sessionTheme=${sessionTheme?.name ?: "null (saved theme)"}")
-        // TEMP on-screen diagnostic: an app sandbox can't read another app's
-        // logcat, so surface what the keyboard received directly on screen.
-        run {
-            val bgHex = extras?.takeIf { it.containsKey("com.pckeyboard.ime.theme.BACKGROUND") }
-                ?.let { Integer.toHexString(it.getInt("com.pckeyboard.ime.theme.BACKGROUND")) }
-            android.widget.Toast.makeText(
-                this,
-                "KbTheme pkg=${info?.packageName} type=${info?.inputType} " +
-                    "extras=${extras != null} bg=$bgHex theme=${sessionTheme?.name ?: "saved"}",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
-        }
         // Refresh theme + sizing prefs on each session — user may have changed
         // them since the IME was last shown.
         keyboardView?.updateTheme(activeTheme())
