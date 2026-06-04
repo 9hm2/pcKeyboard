@@ -183,7 +183,17 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // matching theme for this session; otherwise fall back to the user's
         // saved theme. Recomputed on every session so it tracks the terminal's
         // current colour scheme.
-        sessionTheme = TerminalThemeBridge.fromExtras(info?.extras, themeRepo.getSelectedTheme())
+        val extras = info?.extras
+        android.util.Log.d(
+            "KbTheme",
+            "onStartInputView: restarting=$restarting pkg=${info?.packageName} " +
+                "inputType=${info?.inputType} hasExtras=${extras != null} " +
+                "hasBg=${extras?.containsKey("com.pckeyboard.ime.theme.BACKGROUND")} " +
+                "hasFg=${extras?.containsKey("com.pckeyboard.ime.theme.FOREGROUND")} " +
+                "keyboardView=${keyboardView != null}"
+        )
+        sessionTheme = TerminalThemeBridge.fromExtras(extras, themeRepo.getSelectedTheme())
+        android.util.Log.d("KbTheme", "onStartInputView: sessionTheme=${sessionTheme?.name ?: "null (saved theme)"}")
         // Refresh theme + sizing prefs on each session — user may have changed
         // them since the IME was last shown.
         keyboardView?.updateTheme(activeTheme())
