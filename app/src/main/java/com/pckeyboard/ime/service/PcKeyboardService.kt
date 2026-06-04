@@ -165,6 +165,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             android.graphics.drawable.ColorDrawable(0)
         )
         bindCurrentLayout()
+        kbDebug("onCreateInputView inst=${System.identityHashCode(view)} bound=${view.debugThemeName} session=${sessionTheme?.name ?: "null"}")
         return view
     }
 
@@ -195,6 +196,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.updateTheme(activeTheme())
         bindCurrentLayout()
         keyboardView?.applySizingPrefs()
+        kbDebug("  applied inst=${System.identityHashCode(keyboardView)} bound=${keyboardView?.debugThemeName} active=${activeTheme().name}")
         // If the user finished the clipboard editor with Send, commit the
         // edited text and persist the replacement into the history.
         ClipboardEditorBridge.consume()?.let { r ->
@@ -229,6 +231,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             sessionTheme = derived
             keyboardView?.updateTheme(activeTheme())
             bindCurrentLayout()
+            kbDebug("  applied inst=${System.identityHashCode(keyboardView)} bound=${keyboardView?.debugThemeName} active=${activeTheme().name}")
         }
     }
 
@@ -257,6 +260,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      */
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
+        kbDebug("onFinishInputView finishing=$finishingInput clearing session (was ${sessionTheme?.name ?: "null"})")
         // Drop any terminal-derived theme so the next (possibly non-terminal)
         // session starts from the user's saved theme.
         sessionTheme = null

@@ -171,6 +171,9 @@ class KeyboardView @JvmOverloads constructor(
         }
     }
 
+    /** TEMP diagnostic: the name of the theme currently bound to this view. */
+    val debugThemeName: String get() = theme?.name ?: "null"
+
     /** Clears any ONCE / LOCKED state on every modifier (Shift, Ctrl,
      *  Alt, Caps, …). Called from the IME service on input dismiss so
      *  the next session starts fresh. */
