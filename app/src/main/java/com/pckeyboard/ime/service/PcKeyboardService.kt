@@ -209,6 +209,31 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     /**
+     * Re-read the terminal colours when the keyboard actually becomes visible.
+     * A terminal host can restart input (which delivers its colours through the
+     * editor's extras) right around the time the keyboard is first shown, so
+     * onStartInputView may run before the colours are available — picking them
+     * up here covers that race, which otherwise left the very first session
+     * unthemed until the input was restarted again (e.g. a recents round-trip).
+     */
+    override fun onWindowShown() {
+        super.onWindowShown()
+        val extras = currentInputEditorInfo?.extras
+        android.util.Log.d(
+            "KbTheme",
+            "onWindowShown: hasExtras=${extras != null} " +
+                "hasBg=${extras?.containsKey("com.pckeyboard.ime.theme.BACKGROUND")}"
+        )
+        val derived = TerminalThemeBridge.fromExtras(extras, themeRepo.getSelectedTheme()) ?: return
+        if (derived != sessionTheme) {
+            android.util.Log.d("KbTheme", "onWindowShown: applying ${derived.name}")
+            sessionTheme = derived
+            keyboardView?.updateTheme(activeTheme())
+            bindCurrentLayout()
+        }
+    }
+
+    /**
      * When the IME is dismissed (focus lost, app backgrounded, etc.) reset
      * any transient mode — symbols/emoji/clipboard — so the next time it
      * opens we start clean on the main letters layout.
