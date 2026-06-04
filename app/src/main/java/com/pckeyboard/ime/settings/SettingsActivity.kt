@@ -168,6 +168,16 @@ class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         reload()
+        showThemeDebug()
+    }
+
+    /** TEMP: show the KbTheme handoff diagnostics recorded by the IME service. */
+    private fun showThemeDebug() {
+        val log = getSharedPreferences("kbtheme_debug", MODE_PRIVATE)
+            .getString("log", "").orEmpty()
+        binding.installedVersion.text =
+            getString(R.string.settings_installed_version, BuildConfig.VERSION_NAME) +
+                "\n\n[KbTheme debug]\n" + (log.ifBlank { "(no events yet)" })
     }
 
     override fun onSupportNavigateUp(): Boolean {
