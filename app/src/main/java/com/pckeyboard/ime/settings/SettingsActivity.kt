@@ -62,6 +62,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.installedVersion.text =
             getString(R.string.settings_installed_version, BuildConfig.VERSION_NAME)
         binding.btnCheckUpdates.setOnClickListener { UpdateUi.runManualCheck(this) }
+        binding.btnThemeDebug.setOnClickListener { showThemeDebugDialog() }
         binding.btnInstallPermission.setOnClickListener {
             // Opens the system "Install unknown apps" page filtered to
             // this package — the prerequisite that the in-app updater
@@ -168,16 +169,35 @@ class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         reload()
-        showThemeDebug()
     }
 
-    /** TEMP: show the KbTheme handoff diagnostics recorded by the IME service. */
-    private fun showThemeDebug() {
+    /** TEMP: dialog showing the KbTheme handoff diagnostics, with a Copy button. */
+    private fun showThemeDebugDialog() {
         val log = getSharedPreferences("kbtheme_debug", MODE_PRIVATE)
-            .getString("log", "").orEmpty()
-        binding.installedVersion.text =
-            getString(R.string.settings_installed_version, BuildConfig.VERSION_NAME) +
-                "\n\n[KbTheme debug]\n" + (log.ifBlank { "(no events yet)" })
+            .getString("log", "").orEmpty().ifBlank { "(no events yet)" }
+        val text = android.widget.EditText(this).apply {
+            setText(log)
+            setTextIsSelectable(true)
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setHorizontallyScrolling(true)
+            textSize = 11f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(text) }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("KbTheme debug")
+            .setView(scroll)
+            .setPositiveButton("Copy") { _, _ ->
+                val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("KbTheme debug", log))
+            }
+            .setNeutralButton("Clear") { _, _ ->
+                getSharedPreferences("kbtheme_debug", MODE_PRIVATE).edit().remove("log").apply()
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     override fun onSupportNavigateUp(): Boolean {
