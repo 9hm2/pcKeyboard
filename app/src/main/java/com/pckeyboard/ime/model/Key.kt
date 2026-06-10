@@ -24,6 +24,12 @@ data class Key(
     companion object {
         const val CODE_UNSPECIFIED = 0
 
+        /** Marker code for the configurable slot right of Space. Whatever
+         *  the slot is currently set to (123 / emoji / Alt), long-pressing
+         *  it opens the chooser popup, so the view needs to recognise the
+         *  key independently of its current type and label. */
+        const val CODE_RIGHT_OF_SPACE = -10
+
         fun char(label: String, shift: String? = null, alt: String? = null,
                  popup: String? = null, weight: Float = 1f): Key =
             Key(

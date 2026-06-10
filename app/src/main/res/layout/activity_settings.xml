@@ -491,6 +491,14 @@
                             android:layout_weight="1"
                             android:layout_height="wrap_content"
                             android:text="@string/settings_right_of_space_emoji" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/rightOfSpaceAlt"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:text="@string/settings_right_of_space_alt" />
                     </com.google.android.material.button.MaterialButtonToggleGroup>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

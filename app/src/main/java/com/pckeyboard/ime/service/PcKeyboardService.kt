@@ -313,19 +313,25 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     /** Rewrites the control-row "123" SYMBOL_SWITCH key into whatever the
-     *  user picked in Settings for the slot to the right of Space. */
+     *  user picked for the slot to the right of Space (Settings or the
+     *  key's own long-press chooser). The key is tagged with
+     *  [Key.CODE_RIGHT_OF_SPACE] so the view can offer the chooser on
+     *  long-press regardless of the slot's current assignment. */
     private fun withRightOfSpaceAction(
         layout: KeyboardLayout,
         action: String
     ): KeyboardLayout {
-        if (action == KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS) return layout
         val newRows = layout.rows.map { row ->
             row.map { key ->
                 if (key.type == KeyType.SYMBOL_SWITCH && key.label == "123") {
                     when (action) {
                         KeyboardPrefs.RIGHT_OF_SPACE_EMOJI ->
                             Key.fn("😀", KeyType.EMOJI, weight = key.widthWeight)
-                        else -> key
+                                .copy(code = Key.CODE_RIGHT_OF_SPACE)
+                        KeyboardPrefs.RIGHT_OF_SPACE_ALT ->
+                            Key.fn("Alt", KeyType.ALT, sticky = true, weight = key.widthWeight)
+                                .copy(code = Key.CODE_RIGHT_OF_SPACE)
+                        else -> key.copy(code = Key.CODE_RIGHT_OF_SPACE)
                     }
                 } else key
             }
@@ -573,6 +579,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             }
             MenuAction.OpenVoiceInput -> {
                 keyboardView?.showVoiceInput(recognitionLocaleFor(currentLayoutId))
+            }
+            is MenuAction.SetRightOfSpace -> {
+                kbPrefs.rightOfSpaceAction = action.action
+                bindCurrentLayout()
             }
         }
     }

@@ -195,7 +195,8 @@ class KeyView(
 
     private fun canLongPress(): Boolean =
         key.popupChars != null || key.type == KeyType.SPACE ||
-            key.type == KeyType.LANGUAGE_SWITCH
+            key.type == KeyType.LANGUAGE_SWITCH ||
+            key.code == Key.CODE_RIGHT_OF_SPACE
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {

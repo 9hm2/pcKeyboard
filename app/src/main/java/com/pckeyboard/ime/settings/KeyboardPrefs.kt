@@ -120,9 +120,10 @@ class KeyboardPrefs(context: Context) {
     /**
      * Which action the slot immediately to the right of Space performs.
      * Currently supported: "symbols" (default — flips into the 123 page),
-     * "emoji" (opens the emoji picker directly). The key renders the
-     * matching label ("123" or "😀") so the user sees what tapping it
-     * will do.
+     * "emoji" (opens the emoji picker directly), "alt" (a second sticky
+     * Alt/AltGr modifier for the right thumb). The key renders the
+     * matching label ("123", "😀" or "Alt") so the user sees what
+     * tapping it will do. Long-pressing the key opens a chooser popup.
      */
     var rightOfSpaceAction: String
         get() = prefs.getString(KEY_RIGHT_OF_SPACE, RIGHT_OF_SPACE_SYMBOLS) ?: RIGHT_OF_SPACE_SYMBOLS
@@ -222,6 +223,7 @@ class KeyboardPrefs(context: Context) {
 
         const val RIGHT_OF_SPACE_SYMBOLS = "symbols"
         const val RIGHT_OF_SPACE_EMOJI = "emoji"
+        const val RIGHT_OF_SPACE_ALT = "alt"
 
         /** Threshold above which split mode is applied. */
         const val SPLIT_MIN_WIDTH_DP = 600

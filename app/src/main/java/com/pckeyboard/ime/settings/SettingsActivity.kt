@@ -255,9 +255,10 @@ class SettingsActivity : AppCompatActivity() {
             binding.trackpadSensValue.text = formatSensitivity(v)
         })
 
-        // Right-of-Space slot: pick between "123" (symbols) and "😀" (emoji).
+        // Right-of-Space slot: "123" (symbols), "😀" (emoji) or "Alt".
         val checkedId = when (prefs.rightOfSpaceAction) {
             KeyboardPrefs.RIGHT_OF_SPACE_EMOJI -> R.id.rightOfSpaceEmoji
+            KeyboardPrefs.RIGHT_OF_SPACE_ALT -> R.id.rightOfSpaceAlt
             else -> R.id.rightOfSpaceSymbols
         }
         binding.rightOfSpaceGroup.check(checkedId)
@@ -265,6 +266,7 @@ class SettingsActivity : AppCompatActivity() {
             if (!isChecked) return@addOnButtonCheckedListener
             prefs.rightOfSpaceAction = when (id) {
                 R.id.rightOfSpaceEmoji -> KeyboardPrefs.RIGHT_OF_SPACE_EMOJI
+                R.id.rightOfSpaceAlt -> KeyboardPrefs.RIGHT_OF_SPACE_ALT
                 else -> KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS
             }
         }

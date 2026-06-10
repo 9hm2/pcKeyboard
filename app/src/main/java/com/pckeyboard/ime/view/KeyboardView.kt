@@ -389,6 +389,13 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onKeyLongPress(view: KeyView) {
         stopRepeat(view)
+        // The configurable right-of-Space slot opens its chooser no matter
+        // what it's currently assigned to (123 / emoji / Alt).
+        if (view.key.code == Key.CODE_RIGHT_OF_SPACE) {
+            showRightOfSpaceMenu(view)
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            return
+        }
         when (view.key.type) {
             KeyType.SPACE -> {
                 showTrackpad()
@@ -470,7 +477,6 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun showActionMenu(anchor: KeyView) {
         dismissActionMenu()
-        val theme = theme ?: return
         val prefs = com.pckeyboard.ime.settings.KeyboardPrefs(context)
         val enabled = prefs.enabledLanguages
         val langItems = com.pckeyboard.ime.layout.LayoutRegistry.available
@@ -495,6 +501,39 @@ class KeyboardView @JvmOverloads constructor(
             MenuItem("📋", "Clipboard",        MenuAction.OpenClipboard),
             MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings)
         )
+        presentActionMenu(anchor, items)
+    }
+
+    /** Long-press chooser for the configurable slot right of Space: the
+     *  same popup style (and slide-to-select behaviour) as the globe
+     *  menu, with one row per assignable action. */
+    private fun showRightOfSpaceMenu(anchor: KeyView) {
+        dismissActionMenu()
+        val current = prefs.rightOfSpaceAction
+        val items = listOf(
+            MenuItem(
+                "😀", "Emoji",
+                MenuAction.SetRightOfSpace(KeyboardPrefs.RIGHT_OF_SPACE_EMOJI),
+                isCurrent = current == KeyboardPrefs.RIGHT_OF_SPACE_EMOJI
+            ),
+            MenuItem(
+                "⌥", "Alt (AltGr)",
+                MenuAction.SetRightOfSpace(KeyboardPrefs.RIGHT_OF_SPACE_ALT),
+                isCurrent = current == KeyboardPrefs.RIGHT_OF_SPACE_ALT
+            ),
+            MenuItem(
+                "🔣", "123 Symbols",
+                MenuAction.SetRightOfSpace(KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS),
+                isCurrent = current == KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS
+            )
+        )
+        presentActionMenu(anchor, items)
+    }
+
+    /** Builds an [ActionMenuView] for [items] and mounts it anchored
+     *  above [anchor], clamped to the keyboard bounds. */
+    private fun presentActionMenu(anchor: KeyView, items: List<MenuItem>) {
+        val theme = theme ?: return
         val menu = ActionMenuView(context, items, theme) { action ->
             dismissActionMenu()
             listener?.onMenuAction(action)

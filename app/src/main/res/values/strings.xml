@@ -33,6 +33,7 @@
     <string name="settings_right_of_space_hint">Pick what the slot directly to the right of Space does.</string>
     <string name="settings_right_of_space_symbols">123 Symbols</string>
     <string name="settings_right_of_space_emoji">😀 Emoji</string>
+    <string name="settings_right_of_space_alt">⌥ Alt</string>
     <string name="settings_trackpad_sensitivity">Trackpad sensitivity</string>
     <string name="settings_trackpad_sensitivity_hint">Speed of the space-long-press cursor trackpad. Lower = finer placement; higher = quicker jumps across long lines.</string>
 
