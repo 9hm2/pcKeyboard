@@ -24,6 +24,11 @@ import java.util.zip.GZIPInputStream
  */
 class WordDictionary private constructor(
     private val words: Array<String>,
+    /** Deaccented skeleton of each word, parallel to [words]; shares the
+     *  same String instance when the word has no accents. Lets prefix
+     *  completion match accent-insensitively without re-deaccenting the
+     *  whole list on every keypress. */
+    private val skeletons: Array<String>,
     private val sortedIdx: IntArray,
     private val accentToRank: HashMap<String, Int>,
     /** Distinct characters appearing in the word list — the alphabet the
@@ -32,6 +37,8 @@ class WordDictionary private constructor(
 ) {
 
     val size: Int get() = words.size
+
+    fun wordAt(rank: Int): String = words[rank]
 
     /** Frequency rank of [word] (0 = most frequent), or -1 if absent.
      *  Expects lowercase input. */
@@ -66,18 +73,22 @@ class WordDictionary private constructor(
 
     /**
      * Up to [n] most frequent words strictly longer than [prefix] that
-     * start with it. Scans the rank-ordered list so results come out in
-     * frequency order; the scan is capped at [maxRank] because a
-     * completion so rare it ranks below that isn't worth suggesting.
+     * start with it, compared **accent-insensitively** — typing "kerd"
+     * (or "kérd") surfaces "kérdés", "kérdezni", … . Scans the
+     * rank-ordered list so results come out in frequency order; the scan
+     * is capped at [maxRank] because a completion so rare it ranks below
+     * that isn't worth suggesting.
      */
     fun topCompletions(prefix: String, n: Int, maxRank: Int = COMPLETION_SCAN_CAP): List<String> {
         if (prefix.isEmpty() || n <= 0) return emptyList()
+        val skeletonPrefix = deaccent(prefix)
         val out = ArrayList<String>(n)
         val limit = minOf(maxRank, words.size)
         for (rank in 0 until limit) {
-            val w = words[rank]
-            if (w.length > prefix.length && w.startsWith(prefix)) {
-                out.add(w)
+            if (skeletons[rank].length > skeletonPrefix.length &&
+                skeletons[rank].startsWith(skeletonPrefix)
+            ) {
+                out.add(words[rank])
                 if (out.size == n) break
             }
         }
@@ -108,16 +119,17 @@ class WordDictionary private constructor(
 
             val accentToRank = HashMap<String, Int>()
             val chars = sortedSetOf<Char>()
-            for (rank in words.indices) {
+            val skeletons = Array(words.size) { rank ->
                 val w = words[rank]
                 for (c in w) chars.add(c)
                 val skeleton = deaccent(w)
-                if (skeleton != w) {
+                if (skeleton !== w) {
                     // First hit wins — rank order means it's the most frequent.
                     accentToRank.putIfAbsent(skeleton, rank)
                 }
+                skeleton
             }
-            return WordDictionary(words, sortedIdx, accentToRank, chars.toCharArray())
+            return WordDictionary(words, skeletons, sortedIdx, accentToRank, chars.toCharArray())
         }
 
         /** Strips the accents/diacritics used by the shipped languages.

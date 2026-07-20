@@ -51,7 +51,7 @@ class SuggestionEngine(private val dict: WordDictionary) {
             dict.accentRestore(lower)?.let { offer(it, accentRank / ACCENT_BOOST) }
         }
 
-        if (!typedKnown) {
+        if (!typedKnown && lower.length >= MIN_EDIT1_LENGTH) {
             for ((word, rank) in editDistance1Hits(lower)) {
                 offer(word, rank)
             }
@@ -72,7 +72,11 @@ class SuggestionEngine(private val dict: WordDictionary) {
     }
 
     /** All dictionary words within edit distance 1 of [word], with their
-     *  frequency ranks. A few hundred binary-search probes — cheap. */
+     *  frequency ranks. Each variant is looked up both literally and
+     *  through the accent map, so a typo combined with missing accents
+     *  still lands: "bilentyuzet" --insert l--> "billentyuzet"
+     *  --accent map--> "billentyűzet". A few hundred binary-search /
+     *  hash probes — cheap. */
     private fun editDistance1Hits(word: String): List<Pair<String, Int>> {
         val hits = ArrayList<Pair<String, Int>>()
         val seen = HashSet<String>()
@@ -80,6 +84,8 @@ class SuggestionEngine(private val dict: WordDictionary) {
             if (candidate.isEmpty() || candidate == word || !seen.add(candidate)) return
             val rank = dict.rankOf(candidate)
             if (rank >= 0) hits.add(candidate to rank)
+            val accentRank = dict.accentRestoreRank(candidate)
+            if (accentRank >= 0) hits.add(dict.wordAt(accentRank) to accentRank)
         }
         val n = word.length
         val sb = StringBuilder(word)
@@ -131,15 +137,18 @@ class SuggestionEngine(private val dict: WordDictionary) {
         ) return best
 
         // Edit-1 correction: only when the winner is common and clearly
-        // dominates the runner-up. Completions never auto-replace.
+        // dominates the runner-up. Distances are measured on deaccented
+        // skeletons, so "one typo + missing accents" still counts as a
+        // single edit. Completions never auto-replace.
         val bestRank = dict.rankOf(best)
         if (bestRank !in 0 until EDIT1_AUTOREPLACE_MAX_RANK) return null
-        if (isEditDistanceAtMost1(lower, best).not()) return null
+        val skeleton = WordDictionary.deaccent(lower)
+        if (!isEditDistanceAtMost1(skeleton, WordDictionary.deaccent(best))) return null
         val second = ranked.getOrNull(1)
         if (second != null) {
             val secondRank = dict.rankOf(second)
             if (secondRank in 0..bestRank * DOMINANCE_FACTOR &&
-                isEditDistanceAtMost1(lower, second)
+                isEditDistanceAtMost1(skeleton, WordDictionary.deaccent(second))
             ) return null                              // two plausible fixes — stay passive
         }
         return best
@@ -188,8 +197,12 @@ class SuggestionEngine(private val dict: WordDictionary) {
 
     companion object {
         private val EMPTY = Result(emptyList(), null)
-        /** Don't suggest before this many typed characters. */
-        private const val MIN_TYPED_LENGTH = 2
+        /** Don't suggest before this many typed characters — completions
+         *  and accent restoration kick in from the very first letter. */
+        private const val MIN_TYPED_LENGTH = 1
+        /** Edit-1 variants of a 1-char fragment are pure noise (every
+         *  short word qualifies) — only run typo correction from here. */
+        private const val MIN_EDIT1_LENGTH = 2
         /** Never auto-replace words shorter than this. */
         private const val MIN_AUTOREPLACE_LENGTH = 3
         /** Accent restoration beats everything: effective rank is divided
@@ -200,7 +213,7 @@ class SuggestionEngine(private val dict: WordDictionary) {
          *  multiplied by this. */
         private const val COMPLETION_PENALTY = 2
         private const val ACCENT_AUTOREPLACE_MAX_RANK = 60_000
-        private const val EDIT1_AUTOREPLACE_MAX_RANK = 20_000
+        private const val EDIT1_AUTOREPLACE_MAX_RANK = 30_000
         /** Runner-up within bestRank×this counts as "competing". */
         private const val DOMINANCE_FACTOR = 4
     }
