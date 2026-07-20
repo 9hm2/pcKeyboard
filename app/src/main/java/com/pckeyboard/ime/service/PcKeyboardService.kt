@@ -607,10 +607,16 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     /**
      * Retroactively corrects the word ending at absolute position [end]
-     * while the caret already sits at [caret]. Replaces the word via a
-     * select-and-commit batch and puts the caret back, shifted by the
-     * length delta when it sat behind the corrected word. No undo window
-     * — Backspace at the new caret must keep deleting there.
+     * while the caret already sits at [caret].
+     *
+     * The replacement goes through `setComposingRegion` + `commitText`
+     * — the mechanism editors implement for IMEs — instead of a
+     * select-and-commit dance: `setSelection` is applied asynchronously
+     * by some editors (Compose text fields notably), which made the
+     * commit land at the wrong spot and garble the text. If the editor
+     * doesn't support composing regions we simply skip the correction —
+     * a missed fix is better than mangled text. No undo window is armed:
+     * Backspace at the new caret must keep deleting there.
      */
     private fun maybeAutocorrectAt(end: Int, caret: Int) {
         if (!suggestionsActive() ||
@@ -627,6 +633,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (endIdx < text.length && isWordChar(text[endIdx])) return
         var start = endIdx
         while (start > 0 && isWordChar(text[start - 1])) start--
+        // Never touch the word the user tapped INTO — they went back to
+        // edit it themselves.
+        if (caret in (start + off)..(endIdx + off)) return
         val word = text.substring(start, endIdx)
         if (word.length < 2 || word.length > 32) return
         if (word.lowercase() in autocorrectVetoes) return
@@ -634,10 +643,13 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (replacement == word) return
         val delta = replacement.length - word.length
         ic.beginBatchEdit()
-        ic.setSelection(start + off, endIdx + off)
-        ic.commitText(replacement, 1)          // replaces the selection
-        val target = if (caret >= endIdx + off) caret + delta else caret
-        ic.setSelection(target.coerceAtLeast(0), target.coerceAtLeast(0))
+        if (!ic.setComposingRegion(start + off, endIdx + off)) {
+            ic.endBatchEdit()
+            return
+        }
+        ic.commitText(replacement, 1)          // replaces the composing region
+        val target = (if (caret >= endIdx + off) caret + delta else caret).coerceAtLeast(0)
+        ic.setSelection(target, target)
         ic.endBatchEdit()
     }
 
