@@ -43,6 +43,11 @@ class WordDictionary private constructor(
 
     fun wordAt(rank: Int): String = words[rank]
 
+    /** Precomputed deaccented skeleton of [wordAt] — same instance when
+     *  the word carries no accents. Lets the edit-distance-2 scan avoid
+     *  re-deaccenting tens of thousands of words per keypress. */
+    fun skeletonAt(rank: Int): String = skeletons[rank]
+
     /** Frequency rank of [word] (0 = most frequent), or -1 if absent.
      *  Expects lowercase input. */
     fun rankOf(word: String): Int {
@@ -108,10 +113,21 @@ class WordDictionary private constructor(
          *  APK). Returns null when the language ships no dictionary or
          *  the asset is unreadable. */
         fun load(context: Context, langId: String): WordDictionary? {
-            val lines = try {
+            return try {
                 context.assets.open("dict/$langId.dict").use { raw ->
-                    GZIPInputStream(raw).bufferedReader().readLines()
+                    fromGzipStream(langId, raw)
                 }
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
+        /** Builds the dictionary from a gzip word-list stream — split out
+         *  of [load] so host-JVM tests can feed the real asset files
+         *  without an Android Context. */
+        fun fromGzipStream(langId: String, raw: java.io.InputStream): WordDictionary? {
+            val lines = try {
+                GZIPInputStream(raw).bufferedReader().readLines()
             } catch (_: Throwable) {
                 return null
             }

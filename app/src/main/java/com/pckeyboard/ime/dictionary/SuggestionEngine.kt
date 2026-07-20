@@ -65,6 +65,18 @@ class SuggestionEngine(
             (typedRank in 0 until WEAK_TYPED_RANK) ||
             user?.isKnown(lower) == true
 
+        // Reverse accent error ("mindíg" → "mindig"): the typed word is
+        // morphologically WRONG but its accent-stripped skeleton is a
+        // valid word. This class bypasses rank-trust — "mindíg" is such
+        // a common misspelling that it sits high in the subtitle corpus.
+        // Only possible with the validator loaded: without a judge,
+        // stripping deliberate accents would be far too dangerous.
+        val skeletonWord = WordDictionary.deaccent(lower)
+        val deaccentFix = validator != null && !typedValidWord &&
+            skeletonWord != lower && lower.length >= DEACCENT_FIX_MIN_LENGTH &&
+            user?.isKnown(lower) != true &&
+            validator.invoke(skeletonWord)
+
         // word -> weighted score (lower = better).
         val scored = HashMap<String, Int>()
         fun offer(word: String, score: Int) {
@@ -81,9 +93,25 @@ class SuggestionEngine(
             dict.accentRestore(lower)?.let { offer(it, accentRank / ACCENT_BOOST) }
         }
 
+        if (deaccentFix) {
+            val skeletonRank = dict.rankOf(skeletonWord)
+            offer(skeletonWord, if (skeletonRank >= 0) skeletonRank / ACCENT_BOOST else 0)
+        }
+
         if (!typedTrusted && lower.length >= MIN_EDIT1_LENGTH) {
-            for ((word, score) in editDistance1Hits(lower)) {
+            val edit1 = editDistance1Hits(lower)
+            for ((word, score) in edit1) {
                 offer(word, score)
+            }
+            // Two-typo words ("teljrsem", "krllrne", "afjom") have no
+            // edit-1 neighbour at all — scan the top of the dictionary
+            // for distance-2 matches when the cheap pass came up (near)
+            // empty. Bounded and banded, a couple of ms at worst.
+            val bestEdit1 = edit1.minOfOrNull { it.second } ?: Int.MAX_VALUE
+            if (lower.length >= MIN_EDIT2_LENGTH && bestEdit1 > EDIT2_TRIGGER_SCORE) {
+                for ((word, score) in editDistance2Scan(lower)) {
+                    offer(word, score)
+                }
             }
         }
 
@@ -107,7 +135,9 @@ class SuggestionEngine(
             .filter { candidateAcceptable(it.key) }
 
         if (ranked.isEmpty()) return EMPTY
-        val autoReplace = pickAutoReplace(lower, typedRank, typedTrusted, accentRank, ranked)
+        val autoReplace =
+            if (deaccentFix && lower.length >= MIN_AUTOREPLACE_LENGTH) skeletonWord
+            else pickAutoReplace(lower, typedRank, typedTrusted, accentRank, ranked)
         return Result(
             suggestions = ranked.take(maxSuggestions).map { matchCase(typed, it.key) },
             autoReplace = autoReplace?.let { matchCase(typed, it) }
@@ -185,6 +215,91 @@ class SuggestionEngine(
         return hits
     }
 
+    /**
+     * Distance-2 fallback: scans the most frequent [EDIT2_SCAN_CAP]
+     * dictionary words for skeleton edit distance exactly 2 from the
+     * typed word. First character must match (two-typo words almost
+     * never start wrong — and it cuts the scan cost dramatically) and
+     * lengths may differ by at most 2. Scored with a heavy penalty so a
+     * distance-1 fix always wins when one exists.
+     */
+    private fun editDistance2Scan(word: String): List<Pair<String, Int>> {
+        val skeleton = WordDictionary.deaccent(word)
+        val first = skeleton[0]
+        val hits = ArrayList<Pair<String, Int>>()
+        val limit = minOf(EDIT2_SCAN_CAP, dict.size)
+        for (rank in 0 until limit) {
+            val candSkeleton = dict.skeletonAt(rank)
+            if (candSkeleton.isEmpty() || candSkeleton[0] != first) continue
+            if (kotlin.math.abs(candSkeleton.length - skeleton.length) > 2) continue
+            val d = boundedEditDistance(skeleton, candSkeleton, 2)
+            if (d == 2) {
+                val cand = dict.wordAt(rank)
+                hits.add(cand to (rank * edit2Penalty(word, cand)).toInt())
+            }
+        }
+        return hits
+    }
+
+    /** Slip plausibility for a distance-2 candidate. Two same-length
+     *  substitutions of NEIGHBOURING keys are the classic fat-finger
+     *  double ("afjom"→"adjon": f→d, m→n) — barely dearer than a single
+     *  slip. Far-key substitutions multiply up, and length-changing
+     *  fixes (an extra/lost letter plus another edit) are the least
+     *  likely story, so they carry the heaviest flat penalty. */
+    private fun edit2Penalty(typed: String, cand: String): Float {
+        if (typed.length != cand.length) return PENALTY_EDIT2_LENGTH
+        var penalty = PENALTY_EDIT2
+        var mismatches = 0
+        for (i in typed.indices) {
+            val a = typed[i].lowercaseChar()
+            val b = cand[i]
+            if (WordDictionary.deaccent(a.toString()) ==
+                WordDictionary.deaccent(b.toString())
+            ) continue
+            mismatches++
+            if (mismatches > 2) return PENALTY_EDIT2_LENGTH  // transposition-ish shape
+            penalty *= if (isNearMiss(a, b)) 1.0f else PENALTY_EDIT2_FAR_SUB
+        }
+        return penalty
+    }
+
+    /**
+     * Banded Damerau-Levenshtein (optimal string alignment): returns the
+     * edit distance if it's ≤ [max], or [Int.MAX_VALUE] otherwise. Only
+     * cells within [max] of the diagonal are computed.
+     */
+    private fun boundedEditDistance(a: String, b: String, max: Int): Int {
+        val la = a.length; val lb = b.length
+        if (kotlin.math.abs(la - lb) > max) return Int.MAX_VALUE
+        if (a == b) return 0
+        val inf = max + 1
+        var prevPrev = IntArray(lb + 1) { inf }
+        var prev = IntArray(lb + 1) { it }
+        for (i in 1..la) {
+            val cur = IntArray(lb + 1) { inf }
+            cur[0] = i
+            val from = maxOf(1, i - max)
+            val to = minOf(lb, i + max)
+            for (j in from..to) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                var v = minOf(
+                    prev[j] + 1,          // deletion
+                    cur[j - 1] + 1,       // insertion
+                    prev[j - 1] + cost    // substitution / match
+                )
+                if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) {
+                    v = minOf(v, prevPrev[j - 2] + 1)   // transposition
+                }
+                cur[j] = v
+            }
+            if ((from..to).all { cur[it] > max } && cur[0] > max) return Int.MAX_VALUE
+            prevPrev = prev
+            prev = cur
+        }
+        return if (prev[lb] <= max) prev[lb] else Int.MAX_VALUE
+    }
+
     /** True when mistyping [a] as [b] is physically plausible: the keys
      *  neighbour each other on this language's layout, or the two chars
      *  are accent siblings (a ↔ á). */
@@ -218,11 +333,13 @@ class SuggestionEngine(
             return best.key
         }
 
-        // Edit-1 correction: the winner must be common (cap scales with
-        // word length — long words have few edit-1 neighbours, so deeper
-        // corrections are safe) and clearly dominate the runner-up on
-        // weighted score. Distances are measured on deaccented skeletons
-        // so "one typo + missing accents" still counts as a single edit.
+        // Typo correction: the winner must be common (cap scales with
+        // word length — long words have few close neighbours, so deeper
+        // corrections are safe) OR morphologically valid per Hunspell,
+        // and clearly dominate the runner-up on weighted score.
+        // Distances are measured on deaccented skeletons so "typos +
+        // missing accents" combine cleanly; distance 2 is allowed for
+        // words of 5+ characters ("teljrsem" → "teljesen").
         val bestRank = dict.rankOf(best.key)
         val rankCap = when {
             lower.length >= 6 -> EDIT1_AUTOREPLACE_MAX_RANK_LONG
@@ -230,12 +347,17 @@ class SuggestionEngine(
             else -> EDIT1_AUTOREPLACE_MAX_RANK_SHORT
         }
         val bestIsUserWord = (user?.knownCount(best.key) ?: 0) > 0
-        if (bestRank !in 0 until rankCap && !bestIsUserWord) return null
+        val bestIsValidWord = validator?.let { v ->
+            v(best.key) || v(best.key.replaceFirstChar { it.uppercase() })
+        } == true
+        if (bestRank !in 0 until rankCap && !bestIsUserWord && !bestIsValidWord) return null
         val skeleton = WordDictionary.deaccent(lower)
         val bestSkeleton = WordDictionary.deaccent(best.key)
-        if (!isEditDistanceAtMost1(skeleton, bestSkeleton)) return null
+        val maxDistance = if (lower.length >= MIN_EDIT2_LENGTH) 2 else 1
+        val bestDistance = boundedEditDistance(skeleton, bestSkeleton, maxDistance)
+        if (bestDistance > maxDistance) return null
         if (weakKnown) {
-            // Accent-only differences must go through the accent branch
+            // Accent-only differences must go through the accent branches
             // above (protects deliberate accents: "vágyok" never becomes
             // "vagyok"), and a real typo fix must be far more common
             // than the deep-tail "word" it replaces.
@@ -244,42 +366,13 @@ class SuggestionEngine(
         }
         val second = ranked.getOrNull(1)
         if (second != null &&
-            second.value <= maxOf(best.value, SCORE_FLOOR) * DOMINANCE_FACTOR &&
-            isEditDistanceAtMost1(skeleton, WordDictionary.deaccent(second.key))
-        ) return null                                  // two equally plausible fixes — stay passive
+            second.value * DOMINANCE_DEN <=
+                maxOf(best.value, SCORE_FLOOR) * DOMINANCE_NUM &&
+            boundedEditDistance(
+                skeleton, WordDictionary.deaccent(second.key), maxDistance
+            ) <= bestDistance
+        ) return null                                  // an equally close, plausible rival — stay passive
         return best.key
-    }
-
-    /** True when [b] is within one deletion/insertion/substitution/
-     *  transposition of [a]. */
-    private fun isEditDistanceAtMost1(a: String, b: String): Boolean {
-        if (a == b) return true
-        val la = a.length; val lb = b.length
-        if (kotlin.math.abs(la - lb) > 1) return false
-        if (la == lb) {
-            var diff = -1
-            for (i in 0 until la) {
-                if (a[i] != b[i]) {
-                    if (diff >= 0) {
-                        // Second mismatch — only OK as an adjacent transposition.
-                        return diff == i - 1 && a[diff] == b[i] && a[i] == b[diff] &&
-                            a.substring(i + 1) == b.substring(i + 1)
-                    }
-                    diff = i
-                }
-            }
-            return true
-        }
-        val (short, long) = if (la < lb) a to b else b to a
-        var i = 0; var j = 0; var skipped = false
-        while (i < short.length && j < long.length) {
-            if (short[i] == long[j]) { i++; j++ }
-            else {
-                if (skipped) return false
-                skipped = true; j++
-            }
-        }
-        return true
     }
 
     /** Effective "rank" of a user word with the given use count — the
@@ -324,13 +417,38 @@ class SuggestionEngine(
         private const val PENALTY_SUB_NEAR = 1.0f
         private const val PENALTY_SUB_FAR = 2.5f
 
+        /** Words this long or longer may be corrected across TWO edits
+         *  ("teljrsem" → "teljesen"); shorter words stay at one — half
+         *  of a 4-letter word being wrong is a different word, not a
+         *  slip. Also gates the distance-2 dictionary scan. */
+        private const val MIN_EDIT2_LENGTH = 5
+        /** How deep the distance-2 scan looks into the rank-ordered
+         *  dictionary — matches the long-word auto-replace cap so any
+         *  correction the picker may approve is actually findable. */
+        private const val EDIT2_SCAN_CAP = 150_000
+        /** Base penalty for a same-length double-substitution fix. */
+        private const val PENALTY_EDIT2 = 1.4f
+        /** Extra multiplier per far-key substitution in a distance-2 fix. */
+        private const val PENALTY_EDIT2_FAR_SUB = 1.8f
+        /** Flat penalty for length-changing distance-2 fixes. */
+        private const val PENALTY_EDIT2_LENGTH = 3.0f
+        /** The distance-2 scan only runs when edit-1 found nothing
+         *  better than this score — a decent one-slip fix wins anyway. */
+        private const val EDIT2_TRIGGER_SCORE = 20_000
+        /** Minimum length for the reverse accent fix ("mindíg" →
+         *  "mindig"); very short accented words are too easy to hit. */
+        private const val DEACCENT_FIX_MIN_LENGTH = 4
+
         private const val ACCENT_AUTOREPLACE_MAX_RANK_SHORT = 60_000
         private const val ACCENT_AUTOREPLACE_MAX_RANK_LONG = 250_000
         private const val EDIT1_AUTOREPLACE_MAX_RANK_SHORT = 30_000
         private const val EDIT1_AUTOREPLACE_MAX_RANK_MID = 80_000
         private const val EDIT1_AUTOREPLACE_MAX_RANK_LONG = 150_000
-        /** Runner-up within bestScore×this counts as "competing". */
-        private const val DOMINANCE_FACTOR = 4
+        /** Runner-up within bestScore×(NUM/DEN) counts as "competing" —
+         *  a tight margin: only a genuine coin-flip stays passive, a
+         *  meaningfully better-scored fix gets applied. */
+        private const val DOMINANCE_NUM = 6
+        private const val DOMINANCE_DEN = 5
         /** Corpus rank from which a dictionary entry stops being trusted
          *  as "the user meant this" — the subtitle corpus tail beyond
          *  this is riddled with typos and accentless spellings. */
