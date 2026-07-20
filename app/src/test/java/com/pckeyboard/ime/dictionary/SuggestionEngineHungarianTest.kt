@@ -34,9 +34,9 @@ class SuggestionEngineHungarianTest {
                     Hunspell(HunspellDictionary(ByteBuffersDirectory(), "hu_HU", aff, dic))
                 }
             }
-            engine = SuggestionEngine(dict, null) { w ->
+            engine = SuggestionEngine(dict, null, validator = { w ->
                 try { checker.spell(w) } catch (_: Throwable) { true }
-            }
+            })
         }
     }
 

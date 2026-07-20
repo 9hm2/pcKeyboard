@@ -453,6 +453,11 @@ derived from the OpenSubtitles-2018 frequency lists published in
 (CC-BY-SA 4.0); see `scripts/generate_dictionaries.py` for how they're
 produced.
 
+The bigram (word-pair) models in `app/src/main/assets/dict/*.bigrams`
+are computed by `scripts/generate_bigrams.py` from the news-2020 1M
+sentence corpora of the [Leipzig Corpora Collection](https://wortschatz.uni-leipzig.de/en/download)
+(CC BY).
+
 The Hunspell dictionaries in `app/src/main/assets/hunspell/` come from
 the [LibreOffice dictionaries](https://github.com/LibreOffice/dictionaries)
 collection: hu_HU (magyarispell, GPL/LGPL/MPL tri-license), en_US

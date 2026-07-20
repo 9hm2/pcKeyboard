@@ -31,7 +31,12 @@ class SuggestionEngine(
      *  list can cover. A validated typed word is never auto-corrected,
      *  and deep-tail candidates must pass it to be offered. Null while
      *  the checker is still loading — everything then behaves as before. */
-    private val validator: ((String) -> Boolean)? = null
+    private val validator: ((String) -> Boolean)? = null,
+    /** Word-pair context model: candidates that actually follow the
+     *  previous word in real text get boosted, so ties between
+     *  corrections resolve the way the sentence wants. Null while
+     *  loading — behaves as before. */
+    private val bigrams: BigramModel? = null
 ) {
 
     data class Result(
@@ -44,10 +49,11 @@ class SuggestionEngine(
 
     private val adjacency: Map<Char, String> = adjacencyFor(dict.langId)
 
-    fun suggest(typed: String, maxSuggestions: Int = 3): Result {
+    fun suggest(typed: String, maxSuggestions: Int = 3, prevWord: String? = null): Result {
         if (typed.length < MIN_TYPED_LENGTH) return EMPTY
         val lower = typed.lowercase()
         if (lower.any { !it.isLetter() && it != '\'' }) return EMPTY
+        val prevRank = prevWord?.lowercase()?.let { dict.rankOf(it) } ?: -1
 
         val typedRank = dict.rankOf(lower)
         // "Trusted" = the user's word stands: a genuinely common corpus
@@ -126,6 +132,21 @@ class SuggestionEngine(
         }
 
         if (scored.isEmpty()) return EMPTY
+        // Context boost: a candidate that actually follows the previous
+        // word in real text gets its score divided — this is what breaks
+        // ties between otherwise equally plausible corrections in the
+        // direction the sentence wants.
+        if (bigrams != null && prevRank >= 0) {
+            for (entry in scored.entries) {
+                val c = bigrams.count(prevRank, dict.rankOf(entry.key))
+                if (c > 0) {
+                    entry.setValue(
+                        (entry.value /
+                            (1.0 + kotlin.math.ln(1.0 + c) * BIGRAM_BOOST)).toInt()
+                    )
+                }
+            }
+        }
         // Deep-tail candidates must pass the morphological validator (when
         // available) — this keeps corpus junk out of the strip AND out of
         // auto-correction. Bounded to the best few dozen entries so a
@@ -472,6 +493,10 @@ class SuggestionEngine(
         /** How many top-scored candidates are considered (and validated)
          *  at most per keypress. */
         private const val CANDIDATE_VET_LIMIT = 24
+        /** Strength of the bigram context boost: score is divided by
+         *  1 + ln(1+count)×this, so a pair seen ~20 times in the corpus
+         *  is ~7× more convincing. */
+        private const val BIGRAM_BOOST = 2.0
 
         // --- Physical key adjacency ---------------------------------------
 

@@ -14,6 +14,7 @@ import android.text.InputType
 import com.pckeyboard.ime.clipboard.ClipboardEditorActivity
 import com.pckeyboard.ime.clipboard.ClipboardEditorBridge
 import com.pckeyboard.ime.clipboard.ClipboardHistory
+import com.pckeyboard.ime.dictionary.BigramStore
 import com.pckeyboard.ime.dictionary.DictionaryStore
 import com.pckeyboard.ime.dictionary.HunspellStore
 import com.pckeyboard.ime.dictionary.SuggestionEngine
@@ -191,12 +192,15 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         private const val PUNCT_BOUNDARIES = ".,!?;:"
 
         /** Conjunctions that grammatically require a comma before them,
-         *  per language. */
+         *  per language (AkH. 248–260: tagmondathatár, értelmező,
+         *  hasonlítás, illetve/valamint/avagy). */
         private val COMMA_BEFORE: Map<String, Set<String>> = mapOf(
             "hu_HU" to setOf(
                 "hogy", "de", "mert", "hanem", "viszont", "ugyanis",
                 "hiszen", "mivel", "ami", "aki", "amit", "akit",
-                "amely", "amelyik", "ahol", "amikor", "ahogy", "amiért"
+                "amely", "amelyik", "ahol", "amikor", "ahogy", "amiért",
+                "mint", "illetve", "valamint", "avagy", "azaz",
+                "vagyis", "ámde", "mintha"
             ),
             "de_DE" to setOf(
                 "dass", "weil", "aber", "sondern", "obwohl", "damit",
@@ -204,18 +208,37 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             )
         )
 
+        /** Paired coordinating conjunctions: standalone they take no
+         *  comma ("ezt vagy azt"), but the SECOND occurrence within one
+         *  sentence does ("vagy ezt, vagy azt" — AkH. paired-conjunction
+         *  rule). */
+        private val PAIRED_CONJUNCTIONS: Map<String, Set<String>> = mapOf(
+            "hu_HU" to setOf("vagy", "akár", "hol", "mind", "sem", "se"),
+            "de_DE" to setOf("oder", "entweder", "weder", "noch")
+        )
+
+        /** "több mint száz" style quantity comparisons take NO comma
+         *  before "mint" — the exception to the always-comma rule. */
+        private val MINT_NO_COMMA_PREV = setOf("több", "kevesebb", "jobb", "rosszabb")
+
         /** Words after which the comma is NOT inserted — coordinating
          *  conjunctions form comma-free chains ("és hogy", "vagy aki"),
          *  and stacking a conjunction on a conjunction never takes one. */
         private val NO_COMMA_AFTER: Map<String, Set<String>> = mapOf(
             "hu_HU" to (setOf(
-                "és", "s", "vagy", "meg", "illetve", "azaz",
-                "vagyis", "mint", "akár", "valamint", "se", "sem"
+                "és", "s", "vagy", "meg", "akár", "se", "sem"
             ) + COMMA_BEFORE.getValue("hu_HU")),
             "de_DE" to (setOf(
                 "und", "oder", "sowie", "bzw", "beziehungsweise", "wie"
             ) + COMMA_BEFORE.getValue("de_DE"))
         )
+
+        /** How much text the comma helper looks back for sentence
+         *  context (paired-conjunction detection). */
+        private const val COMMA_CONTEXT_LOOKBACK = 160
+        /** How many next-word predictions the strip shows after a
+         *  completed word. */
+        private const val PREDICTION_COUNT = 5
     }
 
     override fun onCreateInputView(): View {
@@ -265,6 +288,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (showBar) {
             DictionaryStore.preload(this, currentLayoutId)
             HunspellStore.preload(this, currentLayoutId)
+            BigramStore.preload(this, currentLayoutId)
             keyboardView?.setSuggestions(emptyList())
         }
         // If the user finished the clipboard editor with Send, commit the
@@ -393,6 +417,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF) {
             DictionaryStore.preload(this, currentLayoutId)
             HunspellStore.preload(this, currentLayoutId)
+            BigramStore.preload(this, currentLayoutId)
         }
     }
 
@@ -551,12 +576,35 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         return before.subSequence(i, before.length).toString()
     }
 
+    /**
+     * The word fragment being typed plus the completed word before it
+     * (bigram context). The previous word may be separated by spaces
+     * and/or a comma; sentence punctuation (.!?;:) kills the context —
+     * a new sentence starts fresh.
+     */
+    private fun currentWordWithContext(): Pair<String, String?> {
+        val ic = currentInputConnection ?: return "" to null
+        val before = ic.getTextBeforeCursor(MAX_WORD_LOOKBACK, 0) ?: return "" to null
+        var i = before.length
+        while (i > 0 && isWordChar(before[i - 1])) i--
+        if (i == 0 && before.length == MAX_WORD_LOOKBACK) return "" to null
+        val word = before.subSequence(i, before.length).toString()
+        var k = i
+        while (k > 0 && (before[k - 1] == ' ' || before[k - 1] == ',')) k--
+        if (k == 0 || !isWordChar(before[k - 1])) return word to null
+        var j = k
+        while (j > 0 && isWordChar(before[j - 1])) j--
+        return word to before.subSequence(j, k).toString()
+    }
+
     private fun suggestionsActive(): Boolean =
         suggestionsEnabled &&
             kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF &&
             keyboardView != null
 
-    /** Recomputes the suggestion strip for the word left of the cursor. */
+    /** Recomputes the suggestion strip for the word left of the cursor.
+     *  With no word in progress the strip predicts the NEXT word from
+     *  the bigram model instead ("milyen szavak jöhetnek"). */
     private fun updateSuggestions() {
         if (!suggestionsActive()) return
         val dict = DictionaryStore.peek(currentLayoutId)
@@ -564,17 +612,30 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             keyboardView?.setSuggestions(emptyList())
             return
         }
-        val word = currentWord()
+        val (word, prevWord) = currentWordWithContext()
         if (word.isEmpty()) {
-            keyboardView?.setSuggestions(emptyList())
+            val bigrams = BigramStore.peek(currentLayoutId)
+            val prevRank = prevWord?.lowercase()?.let { dict.rankOf(it) } ?: -1
+            val predictions =
+                if (bigrams != null && prevRank >= 0)
+                    bigrams.topNext(prevRank, PREDICTION_COUNT).map { dict.wordAt(it.first) }
+                else emptyList()
+            keyboardView?.setSuggestions(predictions)
             return
         }
         keyboardView?.setSuggestions(
-            SuggestionEngine(dict, userDict(), HunspellStore.validatorFor(currentLayoutId))
-                .suggest(word, com.pckeyboard.ime.view.SuggestionBarView.MAX_SUGGESTIONS)
+            newEngine(dict)
+                .suggest(word, com.pckeyboard.ime.view.SuggestionBarView.MAX_SUGGESTIONS, prevWord)
                 .suggestions
         )
     }
+
+    private fun newEngine(dict: com.pckeyboard.ime.dictionary.WordDictionary) =
+        SuggestionEngine(
+            dict, userDict(),
+            HunspellStore.validatorFor(currentLayoutId),
+            BigramStore.peek(currentLayoutId)
+        )
 
     /**
      * Feeds the word left of the cursor into the per-language learning
@@ -623,10 +684,13 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_AUTO
         ) return false
         val commaBefore = COMMA_BEFORE[currentLayoutId] ?: return false
+        val paired = PAIRED_CONJUNCTIONS[currentLayoutId] ?: emptySet()
         val ic = currentInputConnection ?: return false
         val word = currentWord()
-        if (word.isEmpty() || word.lowercase() !in commaBefore) return false
-        val before = ic.getTextBeforeCursor(MAX_WORD_LOOKBACK, 0)?.toString() ?: return false
+        val lower = word.lowercase()
+        if (word.isEmpty() || (lower !in commaBefore && lower !in paired)) return false
+        val before = ic.getTextBeforeCursor(COMMA_CONTEXT_LOOKBACK, 0)?.toString()
+            ?: return false
         if (!before.endsWith(word)) return false
         val prefix = before.dropLast(word.length)
         var i = prefix.length
@@ -640,11 +704,37 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         while (j > 0 && isWordChar(prefix[j - 1])) j--
         val prevWord = prefix.substring(j, i).lowercase()
         if (prevWord in (NO_COMMA_AFTER[currentLayoutId] ?: emptySet())) return false
+
+        val insert = when {
+            lower in commaBefore ->
+                // "több mint száz" style quantity comparison — no comma.
+                !(lower == "mint" && prevWord in MINT_NO_COMMA_PREV)
+            else ->
+                // Paired conjunction: only the SECOND occurrence within
+                // the current sentence takes the comma.
+                sentenceContains(prefix, lower)
+        }
+        if (!insert) return false
         ic.beginBatchEdit()
         ic.deleteSurroundingText(word.length + spaces, 0)
         ic.commitText(", $word", 1)
         ic.endBatchEdit()
         return true
+    }
+
+    /** True when [word] occurs as a standalone word in the current
+     *  sentence (scanning [prefix] back to the last sentence ender). */
+    private fun sentenceContains(prefix: String, word: String): Boolean {
+        val sentenceStart = prefix.indexOfLast { it == '.' || it == '!' || it == '?' } + 1
+        val sentence = prefix.substring(sentenceStart).lowercase()
+        var idx = 0
+        while (idx < sentence.length) {
+            while (idx < sentence.length && !isWordChar(sentence[idx])) idx++
+            val start = idx
+            while (idx < sentence.length && isWordChar(sentence[idx])) idx++
+            if (idx > start && sentence.substring(start, idx) == word) return true
+        }
+        return false
     }
 
     /**
@@ -708,7 +798,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (word.length < 2 || word.length > 32) return
         if (word.lowercase() in autocorrectVetoes) return
         if (consumeInsistIfRetyped(word)) return
-        val replacement = SuggestionEngine(dict, userDict(), HunspellStore.validatorFor(currentLayoutId)).suggest(word).autoReplace ?: return
+        val replacement = newEngine(dict).suggest(word).autoReplace ?: return
         if (replacement == word) return
         val delta = replacement.length - word.length
         ic.beginBatchEdit()
@@ -736,10 +826,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         ) return false
         val ic = currentInputConnection ?: return false
         val dict = DictionaryStore.peek(currentLayoutId) ?: return false
-        val word = currentWord()
+        val (word, prevWord) = currentWordWithContext()
         if (word.isEmpty() || word.lowercase() in autocorrectVetoes) return false
         if (consumeInsistIfRetyped(word)) return false
-        val replacement = SuggestionEngine(dict, userDict(), HunspellStore.validatorFor(currentLayoutId)).suggest(word).autoReplace
+        val replacement = newEngine(dict).suggest(word, prevWord = prevWord).autoReplace
         if (replacement == null || replacement == word) return false
         ic.beginBatchEdit()
         ic.deleteSurroundingText(word.length, 0)
