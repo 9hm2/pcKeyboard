@@ -25,7 +25,13 @@ class SuggestionEngine(
     /** The user's own learned words — they count as valid (blocking
      *  auto-correction), surface as completions ranked by how often the
      *  user types them, and are reachable through typo correction. */
-    private val user: UserDictionary? = null
+    private val user: UserDictionary? = null,
+    /** Morphological word validator (Hunspell) — knows every inflection
+     *  and compound from stems + affix rules, far beyond what any corpus
+     *  list can cover. A validated typed word is never auto-corrected,
+     *  and deep-tail candidates must pass it to be offered. Null while
+     *  the checker is still loading — everything then behaves as before. */
+    private val validator: ((String) -> Boolean)? = null
 ) {
 
     data class Result(
@@ -45,12 +51,18 @@ class SuggestionEngine(
 
         val typedRank = dict.rankOf(lower)
         // "Trusted" = the user's word stands: a genuinely common corpus
-        // word, or one the user personally taught us. Deep-tail corpus
-        // entries (rank ≥ WEAK_TYPED_RANK) are NOT trusted — the
+        // word, one the user personally taught us, or one Hunspell
+        // validates morphologically (rare inflections, compounds — the
+        // corpus list can never cover those). Deep-tail corpus entries
+        // (rank ≥ WEAK_TYPED_RANK) are NOT trusted by rank alone — the
         // subtitle corpus's tail is full of typos and accentless
         // spellings ("hpgy", "talalkozunk"), and treating those as valid
         // words was blocking exactly the corrections users want most.
-        val typedTrusted = (typedRank in 0 until WEAK_TYPED_RANK) ||
+        val typedValidWord = validator?.let { v ->
+            v(typed) || (typed != lower && v(lower))
+        } == true
+        val typedTrusted = typedValidWord ||
+            (typedRank in 0 until WEAK_TYPED_RANK) ||
             user?.isKnown(lower) == true
 
         // word -> weighted score (lower = better).
@@ -86,13 +98,32 @@ class SuggestionEngine(
         }
 
         if (scored.isEmpty()) return EMPTY
+        // Deep-tail candidates must pass the morphological validator (when
+        // available) — this keeps corpus junk out of the strip AND out of
+        // auto-correction. Bounded to the best few dozen entries so a
+        // pathological word can't trigger hundreds of spell() calls.
         val ranked = scored.entries.sortedBy { it.value }
+            .take(CANDIDATE_VET_LIMIT)
+            .filter { candidateAcceptable(it.key) }
 
+        if (ranked.isEmpty()) return EMPTY
         val autoReplace = pickAutoReplace(lower, typedRank, typedTrusted, accentRank, ranked)
         return Result(
             suggestions = ranked.take(maxSuggestions).map { matchCase(typed, it.key) },
             autoReplace = autoReplace?.let { matchCase(typed, it) }
         )
+    }
+
+    /** Whether a candidate may be shown / used as a correction: the
+     *  user's own words always, common corpus words by rank, everything
+     *  else only if the validator (when loaded) accepts it — lowercase
+     *  or capitalised (proper nouns are stored capitalised in Hunspell). */
+    private fun candidateAcceptable(word: String): Boolean {
+        if ((user?.knownCount(word) ?: 0) > 0) return true
+        val rank = dict.rankOf(word)
+        if (rank in 0 until CANDIDATE_TRUST_RANK) return true
+        val v = validator ?: return true
+        return v(word) || v(word.replaceFirstChar { it.uppercase() })
     }
 
     /**
@@ -316,6 +347,13 @@ class SuggestionEngine(
         /** Score base for user-dictionary words: count 2 lands mid-list,
          *  a word typed dozens of times competes with top corpus words. */
         private const val USER_RANK_BASE = 6_000
+        /** Corpus rank below which a candidate is trusted without asking
+         *  the validator (common words incl. colloquialisms Hunspell may
+         *  not know — "tesó"). */
+        private const val CANDIDATE_TRUST_RANK = 30_000
+        /** How many top-scored candidates are considered (and validated)
+         *  at most per keypress. */
+        private const val CANDIDATE_VET_LIMIT = 24
 
         // --- Physical key adjacency ---------------------------------------
 

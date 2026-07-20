@@ -15,6 +15,7 @@ import com.pckeyboard.ime.clipboard.ClipboardEditorActivity
 import com.pckeyboard.ime.clipboard.ClipboardEditorBridge
 import com.pckeyboard.ime.clipboard.ClipboardHistory
 import com.pckeyboard.ime.dictionary.DictionaryStore
+import com.pckeyboard.ime.dictionary.HunspellStore
 import com.pckeyboard.ime.dictionary.SuggestionEngine
 import com.pckeyboard.ime.dictionary.UserDictionary
 import com.pckeyboard.ime.layout.LayoutRegistry
@@ -236,6 +237,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.setSuggestionBarVisible(showBar)
         if (showBar) {
             DictionaryStore.preload(this, currentLayoutId)
+            HunspellStore.preload(this, currentLayoutId)
             keyboardView?.setSuggestions(emptyList())
         }
         // If the user finished the clipboard editor with Send, commit the
@@ -363,6 +365,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // ready the moment the user starts typing after a switch.
         if (kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF) {
             DictionaryStore.preload(this, currentLayoutId)
+            HunspellStore.preload(this, currentLayoutId)
         }
     }
 
@@ -538,7 +541,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             return
         }
         keyboardView?.setSuggestions(
-            SuggestionEngine(dict, userDict()).suggest(word).suggestions
+            SuggestionEngine(dict, userDict(), HunspellStore.validatorFor(currentLayoutId)).suggest(word).suggestions
         )
     }
 
@@ -635,7 +638,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (word.length < 2 || word.length > 32) return
         if (word.lowercase() in autocorrectVetoes) return
         if (consumeInsistIfRetyped(word)) return
-        val replacement = SuggestionEngine(dict, userDict()).suggest(word).autoReplace ?: return
+        val replacement = SuggestionEngine(dict, userDict(), HunspellStore.validatorFor(currentLayoutId)).suggest(word).autoReplace ?: return
         if (replacement == word) return
         val delta = replacement.length - word.length
         ic.beginBatchEdit()
@@ -666,7 +669,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val word = currentWord()
         if (word.isEmpty() || word.lowercase() in autocorrectVetoes) return false
         if (consumeInsistIfRetyped(word)) return false
-        val replacement = SuggestionEngine(dict, userDict()).suggest(word).autoReplace
+        val replacement = SuggestionEngine(dict, userDict(), HunspellStore.validatorFor(currentLayoutId)).suggest(word).autoReplace
         if (replacement == null || replacement == word) return false
         ic.beginBatchEdit()
         ic.deleteSurroundingText(word.length, 0)

@@ -44,7 +44,11 @@ Ctrl 🌐 Alt        space      123  ◀ ▼ ▶
   with accent restoration (`kerdojel` → `kérdőjel`), typo correction
   and word completion; an opt-in Auto mode fixes obvious typos at word
   boundaries (Space, punctuation, Enter, tap-away) — retyping a
-  corrected word keeps it and teaches it permanently. A per-language
+  corrected word keeps it and teaches it permanently. A built-in
+  **Hunspell checker** (the LibreOffice engine, pure-Java Lucene port)
+  validates words morphologically from stems + affix rules, so rare
+  inflections and Hungarian compounds the corpus never saw are
+  recognised as correct and never "fixed". A per-language
   **learning dictionary** picks up
   the user's own words: anything typed twice is suggested from then on
   and shielded from auto-correction. Off / Suggest / Auto in Settings.
@@ -448,3 +452,10 @@ derived from the OpenSubtitles-2018 frequency lists published in
 [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords)
 (CC-BY-SA 4.0); see `scripts/generate_dictionaries.py` for how they're
 produced.
+
+The Hunspell dictionaries in `app/src/main/assets/hunspell/` come from
+the [LibreOffice dictionaries](https://github.com/LibreOffice/dictionaries)
+collection: hu_HU (magyarispell, GPL/LGPL/MPL tri-license), en_US
+(SCOWL), de_DE (frami, GPL 3), es_ES (GPL 3 / LGPL / MPL). Spell
+checking runs on Apache Lucene's pure-Java Hunspell implementation
+(Apache License 2.0).

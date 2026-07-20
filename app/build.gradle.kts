@@ -95,4 +95,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // Pure-Java Hunspell (the LibreOffice spell-check engine, rewritten in
+    // Lucene 9) — morphological word validation incl. Hungarian compounds.
+    implementation("org.apache.lucene:lucene-core:9.11.1")
+    implementation("org.apache.lucene:lucene-analysis-common:9.11.1")
+
+    testImplementation("junit:junit:4.13.2")
 }
