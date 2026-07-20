@@ -16,6 +16,7 @@ import com.pckeyboard.ime.clipboard.ClipboardEditorBridge
 import com.pckeyboard.ime.clipboard.ClipboardHistory
 import com.pckeyboard.ime.dictionary.DictionaryStore
 import com.pckeyboard.ime.dictionary.SuggestionEngine
+import com.pckeyboard.ime.dictionary.UserDictionary
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
 import com.pckeyboard.ime.model.Key
@@ -68,8 +69,15 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      *  other key clears it. */
     private var lastAutocorrect: Pair<String, String>? = null
     /** Words whose auto-correction the user undid this session — never
-     *  auto-corrected again until the IME restarts. */
+     *  auto-corrected again until the IME restarts. (The undo also
+     *  force-learns the word into the persistent [UserDictionary], so
+     *  the veto outlives the session too.) */
     private val autocorrectVetoes = mutableSetOf<String>()
+    /** Lazily-created per-language learning dictionaries. */
+    private val userDicts = mutableMapOf<String, UserDictionary>()
+
+    private fun userDict(): UserDictionary =
+        userDicts.getOrPut(currentLayoutId) { UserDictionary(this, currentLayoutId) }
 
     // When the keyboard is opened by a co-operating terminal (NeoTerm) it
     // advertises its colours through EditorInfo.extras; we derive a theme from
@@ -390,7 +398,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (currentInputConnection == null) return
         when (key.type) {
             KeyType.SPACE -> handleSpaceCommit()
-            KeyType.ENTER -> handleEnter(modifiers)
+            KeyType.ENTER -> {
+                learnCurrentWord()
+                handleEnter(modifiers)
+            }
             KeyType.BACKSPACE -> {
                 if (!undoAutocorrectIfPending()) sendKey(KeyEvent.KEYCODE_DEL, modifiers)
             }
@@ -439,6 +450,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             KeyType.HIDE -> requestHideSelf(0)
             KeyType.LETTER, KeyType.CHAR -> {
                 val c = pickChar(key, modifiers)
+                // Punctuation ends the word — count it for the learning
+                // dictionary before the boundary char goes in.
+                if (!isWordChar(c)) learnCurrentWord()
                 val altAsAltGr = modifiers.isAltActive() && key.altLabel != null
                 when {
                     altAsAltGr -> commitChar(c)        // Alt produces the layout's AltGr char
@@ -498,7 +512,27 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             keyboardView?.setSuggestions(emptyList())
             return
         }
-        keyboardView?.setSuggestions(SuggestionEngine(dict).suggest(word).suggestions)
+        keyboardView?.setSuggestions(
+            SuggestionEngine(dict, userDict()).suggest(word).suggestions
+        )
+    }
+
+    /**
+     * Feeds the word left of the cursor into the per-language learning
+     * dictionary. Called on every word boundary (Space, Enter,
+     * punctuation). Only words the main dictionary doesn't know are
+     * counted; after [UserDictionary.LEARN_THRESHOLD] uses they start
+     * showing up in suggestions and are shielded from auto-correction.
+     */
+    private fun learnCurrentWord() {
+        if (!suggestionsActive()) return
+        val dict = DictionaryStore.peek(currentLayoutId) ?: return
+        val word = currentWord()
+        if (word.length < 2 || word.length > 32) return
+        val lower = word.lowercase()
+        if (lower.any { !isWordChar(it) }) return
+        if (dict.contains(lower)) return
+        userDict().recordUse(lower)
     }
 
     /**
@@ -516,7 +550,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             if (dict != null && word.isNotEmpty() &&
                 word.lowercase() !in autocorrectVetoes
             ) {
-                val replacement = SuggestionEngine(dict).suggest(word).autoReplace
+                val replacement = SuggestionEngine(dict, userDict()).suggest(word).autoReplace
                 if (replacement != null && replacement != word) {
                     ic.beginBatchEdit()
                     ic.deleteSurroundingText(word.length, 0)
@@ -527,6 +561,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                 }
             }
         }
+        // The word survived (or auto-correct is off) — that's a real use.
+        learnCurrentWord()
         commitChar(' ')
     }
 
@@ -549,6 +585,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         ic.commitText("$original ", 1)
         ic.endBatchEdit()
         autocorrectVetoes.add(original.lowercase())
+        // Undoing a correction is the strongest "I meant that" — learn
+        // the word permanently so it's suggested and never touched again.
+        userDict().forceLearn(original.lowercase())
         return true
     }
 

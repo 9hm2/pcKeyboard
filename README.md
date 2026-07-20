@@ -39,10 +39,13 @@ Ctrl 🌐 Alt        space      123  ◀ ▼ ▶
 - **Custom themes** with an ARGB colour picker (sliders + hex display +
   Default reset) and a live preview against the actual keyboard view.
 - **Offline autocorrect & suggestions** — per-language frequency
-  dictionaries (HU / EN / DE / ES, ~1.8 MB total) power a passive
-  suggestion strip with accent restoration (`kerdojel` → `kérdőjel`),
-  typo correction and word completion; an opt-in Auto mode fixes obvious
-  typos on Space with a Backspace undo. Off / Suggest / Auto in Settings.
+  dictionaries (HU 400k / DE 250k / EN 250k / ES 250k word forms,
+  inflections included, ~5.4 MB total) power a passive suggestion strip
+  with accent restoration (`kerdojel` → `kérdőjel`), typo correction
+  and word completion; an opt-in Auto mode fixes obvious typos on Space
+  with a Backspace undo. A per-language **learning dictionary** picks up
+  the user's own words: anything typed twice is suggested from then on
+  and shielded from auto-correction. Off / Suggest / Auto in Settings.
 
 ## Layout
 

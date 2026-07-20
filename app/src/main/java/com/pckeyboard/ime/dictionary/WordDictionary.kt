@@ -96,7 +96,7 @@ class WordDictionary private constructor(
     }
 
     companion object {
-        private const val COMPLETION_SCAN_CAP = 60_000
+        private const val COMPLETION_SCAN_CAP = 120_000
 
         /** Loads `assets/dict/<langId>.dict` (gzip-compressed word list —
          *  the neutral extension matters: aapt2 transparently *decompresses

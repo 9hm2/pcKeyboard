@@ -27,12 +27,16 @@ from pathlib import Path
 
 # Hungarian is agglutinative — inflected forms each count as a separate
 # dictionary entry, so it needs a much deeper cut than the others to
-# reach comparable coverage.
+# reach comparable coverage. The corpus-count threshold (last tuple
+# field) filters the long tail of the subtitle corpus, which is mostly
+# typos and OCR noise — a "word" seen fewer times than that isn't
+# trustworthy no matter how deep we cut. Caps are chosen to keep the
+# in-memory dictionary of an IME process reasonable.
 LANGS = {
-    "hu_HU": ("hu_full.txt", re.compile(r"^[a-záéíóöőúüű]+$"), 150_000),
-    "en_US": ("en_full.txt", re.compile(r"^[a-z]+(?:'[a-z]+)?$"), 80_000),
-    "de_DE": ("de_full.txt", re.compile(r"^[a-zäöüß]+$"), 100_000),
-    "es_ES": ("es_full.txt", re.compile(r"^[a-záéíóúüñ]+$"), 80_000),
+    "hu_HU": ("hu_full.txt", re.compile(r"^[a-záéíóöőúüű]+$"), 400_000, 5),
+    "en_US": ("en_full.txt", re.compile(r"^[a-z]+(?:'[a-z]+)?$"), 250_000, 4),
+    "de_DE": ("de_full.txt", re.compile(r"^[a-zäöüß]+$"), 250_000, 4),
+    "es_ES": ("es_full.txt", re.compile(r"^[a-záéíóúüñ]+$"), 250_000, 4),
 }
 
 # Drop single letters that aren't real words — they'd otherwise become
@@ -45,12 +49,21 @@ SINGLE_LETTER_WORDS = {
 }
 
 
-def generate(lang_id, src_path, pattern, max_words, out_dir):
+def generate(lang_id, src_path, pattern, max_words, min_count, out_dir):
     words = []
     seen = set()
     with open(src_path, encoding="utf-8") as f:
         for line in f:
-            token = line.split(" ", 1)[0].strip().lower()
+            parts = line.split()
+            if len(parts) != 2:
+                continue
+            token = parts[0].strip().lower()
+            try:
+                count = int(parts[1])
+            except ValueError:
+                continue
+            if count < min_count:
+                continue
             if not pattern.match(token):
                 continue
             if len(token) == 1 and token not in SINGLE_LETTER_WORDS[lang_id]:
@@ -75,8 +88,8 @@ def main():
     out_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else \
         Path(__file__).resolve().parent.parent / "app/src/main/assets/dict"
     out_dir.mkdir(parents=True, exist_ok=True)
-    for lang_id, (fname, pattern, max_words) in LANGS.items():
-        generate(lang_id, src_dir / fname, pattern, max_words, out_dir)
+    for lang_id, (fname, pattern, max_words, min_count) in LANGS.items():
+        generate(lang_id, src_dir / fname, pattern, max_words, min_count, out_dir)
 
 
 if __name__ == "__main__":

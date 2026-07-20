@@ -17,7 +17,13 @@ package com.pckeyboard.ime.dictionary
  * a word the dictionary doesn't know, with a clearly dominant, common
  * correction. Anything ambiguous stays a passive suggestion.
  */
-class SuggestionEngine(private val dict: WordDictionary) {
+class SuggestionEngine(
+    private val dict: WordDictionary,
+    /** The user's own learned words — they count as valid (blocking
+     *  auto-correction), surface as completions ranked by how often the
+     *  user types them, and are reachable through typo correction. */
+    private val user: UserDictionary? = null
+) {
 
     data class Result(
         /** Display candidates, best first, cased like the typed word. */
@@ -33,7 +39,7 @@ class SuggestionEngine(private val dict: WordDictionary) {
         if (lower.any { !it.isLetter() && it != '\'' }) return EMPTY
 
         val typedRank = dict.rankOf(lower)
-        val typedKnown = typedRank >= 0
+        val typedKnown = typedRank >= 0 || user?.isKnown(lower) == true
 
         // word -> weighted score (lower = better).
         val scored = HashMap<String, Int>()
@@ -61,6 +67,12 @@ class SuggestionEngine(private val dict: WordDictionary) {
             offer(completion, dict.rankOf(completion) * COMPLETION_PENALTY)
         }
 
+        // The user's own words complete too — scored by personal use
+        // count, so a name typed daily quickly outranks corpus words.
+        user?.knownCompletions(lower, maxSuggestions)?.forEach { (word, count) ->
+            offer(word, userScore(count))
+        }
+
         if (scored.isEmpty()) return EMPTY
         val ranked = scored.entries.sortedBy { it.value }.map { it.key }
 
@@ -86,6 +98,8 @@ class SuggestionEngine(private val dict: WordDictionary) {
             if (rank >= 0) hits.add(candidate to rank)
             val accentRank = dict.accentRestoreRank(candidate)
             if (accentRank >= 0) hits.add(dict.wordAt(accentRank) to accentRank)
+            val userCount = user?.knownCount(candidate) ?: 0
+            if (userCount > 0) hits.add(candidate to userScore(userCount))
         }
         val n = word.length
         val sb = StringBuilder(word)
@@ -186,6 +200,10 @@ class SuggestionEngine(private val dict: WordDictionary) {
         return true
     }
 
+    /** Effective "rank" of a user word with the given use count — the
+     *  more the user types it, the closer it gets to the top. */
+    private fun userScore(count: Int): Int = USER_RANK_BASE / count
+
     /** Applies the typed word's casing to a lowercase suggestion. */
     private fun matchCase(typed: String, suggestion: String): String = when {
         typed.length > 1 && typed.all { !it.isLetter() || it.isUpperCase() } ->
@@ -216,5 +234,8 @@ class SuggestionEngine(private val dict: WordDictionary) {
         private const val EDIT1_AUTOREPLACE_MAX_RANK = 30_000
         /** Runner-up within bestRank×this counts as "competing". */
         private const val DOMINANCE_FACTOR = 4
+        /** Score base for user-dictionary words: count 2 lands mid-list,
+         *  a word typed dozens of times competes with top corpus words. */
+        private const val USER_RANK_BASE = 6_000
     }
 }
