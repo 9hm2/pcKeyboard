@@ -50,14 +50,33 @@ class SuggestionBarView(
             gravity = Gravity.CENTER
             maxLines = 1
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setTextColor(if (best) theme.accentColor else theme.keyTextColor)
-            typeface = if (best) Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                       else Typeface.create("sans-serif", Typeface.NORMAL)
+            // The best candidate is rendered as an accent-coloured pill
+            // with the theme's accent TEXT colour — the same pair the
+            // Space/Enter keys use, so it stays legible even when the
+            // accent colour itself is pale against the bar background
+            // (colouring just the text with the accent was unreadable
+            // on low-contrast themes).
+            if (best) {
+                setTextColor(theme.accentTextColor)
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(theme.accentColor)
+                    cornerRadius = dp(10f).toFloat()
+                }
+            } else {
+                setTextColor(theme.keyTextColor)
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            }
             minimumWidth = dp(88f)
-            setPadding(dp(14f), 0, dp(14f), 0)
+            setPadding(dp(16f), 0, dp(16f), 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT
-            )
+            ).apply {
+                if (best) {
+                    topMargin = dp(6f); bottomMargin = dp(6f)
+                    leftMargin = dp(6f); rightMargin = dp(2f)
+                }
+            }
             isClickable = true
             setOnClickListener {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
