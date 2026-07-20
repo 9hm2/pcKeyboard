@@ -23,6 +23,9 @@ import java.util.zip.GZIPInputStream
  *                   which is the highest-value correction for Hungarian.
  */
 class WordDictionary private constructor(
+    /** Language pack id this dictionary belongs to ("hu_HU", …) — the
+     *  suggestion engine derives the physical key-adjacency map from it. */
+    val langId: String,
     private val words: Array<String>,
     /** Deaccented skeleton of each word, parallel to [words]; shares the
      *  same String instance when the word has no accents. Lets prefix
@@ -129,7 +132,7 @@ class WordDictionary private constructor(
                 }
                 skeleton
             }
-            return WordDictionary(words, skeletons, sortedIdx, accentToRank, chars.toCharArray())
+            return WordDictionary(langId, words, skeletons, sortedIdx, accentToRank, chars.toCharArray())
         }
 
         /** Strips the accents/diacritics used by the shipped languages.

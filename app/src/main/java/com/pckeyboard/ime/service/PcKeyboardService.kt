@@ -64,10 +64,11 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     /** Per-editor verdict from [shouldSuggestFor] — false for passwords,
      *  terminals, URL bars etc. */
     private var suggestionsEnabled = false
-    /** Set when the last committed word was auto-corrected: original →
-     *  replacement. An immediate Backspace undoes the correction; any
-     *  other key clears it. */
-    private var lastAutocorrect: Pair<String, String>? = null
+    /** Set when the last committed word was auto-corrected:
+     *  (original, replacement, boundary char that triggered it — space
+     *  or punctuation). An immediate Backspace undoes the correction;
+     *  any other key clears it. */
+    private var lastAutocorrect: Triple<String, String, String>? = null
     /** Words whose auto-correction the user undid this session — never
      *  auto-corrected again until the IME restarts. (The undo also
      *  force-learns the word into the persistent [UserDictionary], so
@@ -177,6 +178,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         /** How far left of the cursor [currentWord] looks for the start
          *  of the word being typed. */
         private const val MAX_WORD_LOOKBACK = 48
+        /** Sentence punctuation that ends a word the same way Space does
+         *  — typing "szó." auto-corrects just like "szó ". Digits and
+         *  other symbols deliberately don't (ids, code, "abc1"). */
+        private const val PUNCT_BOUNDARIES = ".,!?;:"
     }
 
     override fun onCreateInputView(): View {
@@ -396,14 +401,20 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onKey(key: Key, modifiers: ModifierState) {
         if (currentInputConnection == null) return
+        // Backspace first — it may be the undo of a fresh auto-correction.
+        if (key.type == KeyType.BACKSPACE) {
+            if (!undoAutocorrectIfPending()) sendKey(KeyEvent.KEYCODE_DEL, modifiers)
+            updateSuggestions()
+            return
+        }
+        // Any other key closes the undo window; Space / punctuation may
+        // open a fresh one below (maybeAutocorrect sets it).
+        lastAutocorrect = null
         when (key.type) {
             KeyType.SPACE -> handleSpaceCommit()
             KeyType.ENTER -> {
                 learnCurrentWord()
                 handleEnter(modifiers)
-            }
-            KeyType.BACKSPACE -> {
-                if (!undoAutocorrectIfPending()) sendKey(KeyEvent.KEYCODE_DEL, modifiers)
             }
             KeyType.DELETE -> sendKey(KeyEvent.KEYCODE_FORWARD_DEL, modifiers)
             KeyType.TAB -> sendKey(KeyEvent.KEYCODE_TAB, modifiers)
@@ -450,11 +461,20 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             KeyType.HIDE -> requestHideSelf(0)
             KeyType.LETTER, KeyType.CHAR -> {
                 val c = pickChar(key, modifiers)
-                // Punctuation ends the word — count it for the learning
-                // dictionary before the boundary char goes in.
-                if (!isWordChar(c)) learnCurrentWord()
                 val altAsAltGr = modifiers.isAltActive() && key.altLabel != null
-                when {
+                // Sentence punctuation ends the word: try the same
+                // auto-correction as Space (committing "word." fixed),
+                // otherwise count the word for the learning dictionary.
+                var handled = false
+                if (!altAsAltGr && !modifiers.shouldSendAsKeyEvent() &&
+                    c in PUNCT_BOUNDARIES
+                ) {
+                    if (maybeAutocorrect(c.toString())) handled = true
+                    else learnCurrentWord()
+                } else if (!isWordChar(c)) {
+                    learnCurrentWord()
+                }
+                if (!handled) when {
                     altAsAltGr -> commitChar(c)        // Alt produces the layout's AltGr char
                     modifiers.shouldSendAsKeyEvent() -> {
                         val code = androidKeyCodeForChar(c)
@@ -465,12 +485,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             }
             else -> {}
         }
-        // Autocorrect bookkeeping: any key other than Space clears the
-        // pending undo window (Space sets it in handleSpaceCommit, the
-        // undoing Backspace already consumed it), and the suggestion bar
-        // is recomputed from the editor's actual text so it stays honest
-        // across cursor motion, deletes and mode switches.
-        if (key.type != KeyType.SPACE) lastAutocorrect = null
+        // Recompute the strip from the editor's actual text so it stays
+        // honest across cursor motion, deletes and mode switches.
         updateSuggestions()
     }
 
@@ -536,34 +552,39 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     /**
-     * Space commit with optional auto-correction. In [KeyboardPrefs.AUTOCORRECT_AUTO]
-     * mode a confidently-wrong word left of the cursor is replaced before
-     * the space goes in; the original is remembered so an immediate
-     * Backspace can undo the whole thing.
+     * Space commit with optional auto-correction: in
+     * [KeyboardPrefs.AUTOCORRECT_AUTO] mode a confidently-wrong word
+     * left of the cursor is replaced before the space goes in.
      */
     private fun handleSpaceCommit() {
-        val ic = currentInputConnection ?: return
-        lastAutocorrect = null
-        if (suggestionsActive() && kbPrefs.autocorrectMode == KeyboardPrefs.AUTOCORRECT_AUTO) {
-            val dict = DictionaryStore.peek(currentLayoutId)
-            val word = if (dict != null) currentWord() else ""
-            if (dict != null && word.isNotEmpty() &&
-                word.lowercase() !in autocorrectVetoes
-            ) {
-                val replacement = SuggestionEngine(dict, userDict()).suggest(word).autoReplace
-                if (replacement != null && replacement != word) {
-                    ic.beginBatchEdit()
-                    ic.deleteSurroundingText(word.length, 0)
-                    ic.commitText("$replacement ", 1)
-                    ic.endBatchEdit()
-                    lastAutocorrect = word to replacement
-                    return
-                }
-            }
-        }
+        if (maybeAutocorrect(" ")) return
         // The word survived (or auto-correct is off) — that's a real use.
         learnCurrentWord()
         commitChar(' ')
+    }
+
+    /**
+     * Attempts an auto-correction of the word left of the cursor at a
+     * word boundary ([boundary] is the space / punctuation about to be
+     * committed). On success commits "replacement + boundary" in one
+     * batch, arms the Backspace-undo window, and returns true.
+     */
+    private fun maybeAutocorrect(boundary: String): Boolean {
+        if (!suggestionsActive() ||
+            kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_AUTO
+        ) return false
+        val ic = currentInputConnection ?: return false
+        val dict = DictionaryStore.peek(currentLayoutId) ?: return false
+        val word = currentWord()
+        if (word.isEmpty() || word.lowercase() in autocorrectVetoes) return false
+        val replacement = SuggestionEngine(dict, userDict()).suggest(word).autoReplace
+        if (replacement == null || replacement == word) return false
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(word.length, 0)
+        ic.commitText(replacement + boundary, 1)
+        ic.endBatchEdit()
+        lastAutocorrect = Triple(word, replacement, boundary)
+        return true
     }
 
     /**
@@ -572,17 +593,17 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      * rest of the session — the user has spoken.
      */
     private fun undoAutocorrectIfPending(): Boolean {
-        val (original, replacement) = lastAutocorrect ?: return false
+        val (original, replacement, boundary) = lastAutocorrect ?: return false
         lastAutocorrect = null
         val ic = currentInputConnection ?: return false
         // Only undo when the corrected text is really still there —
         // the user may have tapped elsewhere in the meantime.
-        val expect = "$replacement "
+        val expect = replacement + boundary
         val actual = ic.getTextBeforeCursor(expect.length, 0)?.toString()
         if (actual != expect) return false
         ic.beginBatchEdit()
         ic.deleteSurroundingText(expect.length, 0)
-        ic.commitText("$original ", 1)
+        ic.commitText(original + boundary, 1)
         ic.endBatchEdit()
         autocorrectVetoes.add(original.lowercase())
         // Undoing a correction is the strongest "I meant that" — learn

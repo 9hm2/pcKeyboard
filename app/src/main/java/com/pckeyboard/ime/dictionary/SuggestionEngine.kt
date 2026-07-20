@@ -7,15 +7,18 @@ package com.pckeyboard.ime.dictionary
  * Candidate sources, blended by weighted frequency rank:
  *  - accent restoration ("kerdojel" → "kérdőjel") — strongest signal,
  *    it's an exact match modulo diacritics;
- *  - edit-distance-1 corrections (deletion / transposition /
- *    substitution / insertion variants looked up in the dictionary);
+ *  - edit-distance-1 corrections, where each edit is weighted by how
+ *    plausible that slip actually is: adjacent-key substitutions and
+ *    swapped/missing/extra letters are cheap, a substitution with a key
+ *    from the other side of the keyboard is expensive;
  *  - prefix completions (most frequent words continuing the typed
- *    prefix) — useful while the word is still being typed, so they're
- *    weighted the most conservatively.
+ *    prefix, accent-insensitively) — weighted the most conservatively;
+ *  - the user's own learned words, ranked by personal use count.
  *
- * The auto-replace verdict is intentionally strict — it only fires for
- * a word the dictionary doesn't know, with a clearly dominant, common
- * correction. Anything ambiguous stays a passive suggestion.
+ * The auto-replace verdict only fires for a word no dictionary knows,
+ * with a clearly dominant correction — but "dominant" is judged on the
+ * weighted scores, so a likely slip beats an unlikely one instead of
+ * both blocking each other.
  */
 class SuggestionEngine(
     private val dict: WordDictionary,
@@ -33,13 +36,22 @@ class SuggestionEngine(
         val autoReplace: String?
     )
 
+    private val adjacency: Map<Char, String> = adjacencyFor(dict.langId)
+
     fun suggest(typed: String, maxSuggestions: Int = 3): Result {
         if (typed.length < MIN_TYPED_LENGTH) return EMPTY
         val lower = typed.lowercase()
         if (lower.any { !it.isLetter() && it != '\'' }) return EMPTY
 
         val typedRank = dict.rankOf(lower)
-        val typedKnown = typedRank >= 0 || user?.isKnown(lower) == true
+        // "Trusted" = the user's word stands: a genuinely common corpus
+        // word, or one the user personally taught us. Deep-tail corpus
+        // entries (rank ≥ WEAK_TYPED_RANK) are NOT trusted — the
+        // subtitle corpus's tail is full of typos and accentless
+        // spellings ("hpgy", "talalkozunk"), and treating those as valid
+        // words was blocking exactly the corrections users want most.
+        val typedTrusted = (typedRank in 0 until WEAK_TYPED_RANK) ||
+            user?.isKnown(lower) == true
 
         // word -> weighted score (lower = better).
         val scored = HashMap<String, Int>()
@@ -53,13 +65,13 @@ class SuggestionEngine(
         // more frequent than its accented sibling ("vagyok" vs "vágyok"),
         // the user almost certainly meant what they typed; stay quiet.
         val accentRank = dict.accentRestoreRank(lower)
-        if (accentRank >= 0 && (!typedKnown || accentRank < typedRank)) {
+        if (accentRank >= 0 && (typedRank < 0 || accentRank < typedRank)) {
             dict.accentRestore(lower)?.let { offer(it, accentRank / ACCENT_BOOST) }
         }
 
-        if (!typedKnown && lower.length >= MIN_EDIT1_LENGTH) {
-            for ((word, rank) in editDistance1Hits(lower)) {
-                offer(word, rank)
+        if (!typedTrusted && lower.length >= MIN_EDIT1_LENGTH) {
+            for ((word, score) in editDistance1Hits(lower)) {
+                offer(word, score)
             }
         }
 
@@ -74,98 +86,137 @@ class SuggestionEngine(
         }
 
         if (scored.isEmpty()) return EMPTY
-        val ranked = scored.entries.sortedBy { it.value }.map { it.key }
+        val ranked = scored.entries.sortedBy { it.value }
 
-        val autoReplace = pickAutoReplace(lower, typedKnown, accentRank, ranked)
+        val autoReplace = pickAutoReplace(lower, typedRank, typedTrusted, accentRank, ranked)
         return Result(
-            suggestions = ranked.take(maxSuggestions).map { matchCase(typed, it) },
+            suggestions = ranked.take(maxSuggestions).map { matchCase(typed, it.key) },
             autoReplace = autoReplace?.let { matchCase(typed, it) }
         )
     }
 
-    /** All dictionary words within edit distance 1 of [word], with their
-     *  frequency ranks. Each variant is looked up both literally and
-     *  through the accent map, so a typo combined with missing accents
-     *  still lands: "bilentyuzet" --insert l--> "billentyuzet"
-     *  --accent map--> "billentyűzet". A few hundred binary-search /
-     *  hash probes — cheap. */
+    /**
+     * All dictionary / user words within edit distance 1 of [word], with
+     * weighted scores (frequency rank × slip-plausibility penalty).
+     * Each variant is looked up literally AND through the accent map, so
+     * a typo combined with missing accents still lands:
+     * "bilentyuzet" --insert l--> "billentyuzet" --map--> "billentyűzet".
+     */
     private fun editDistance1Hits(word: String): List<Pair<String, Int>> {
         val hits = ArrayList<Pair<String, Int>>()
         val seen = HashSet<String>()
-        fun probe(candidate: String) {
+        fun probe(candidate: String, penalty: Float) {
             if (candidate.isEmpty() || candidate == word || !seen.add(candidate)) return
             val rank = dict.rankOf(candidate)
-            if (rank >= 0) hits.add(candidate to rank)
+            if (rank >= 0) hits.add(candidate to (rank * penalty).toInt())
             val accentRank = dict.accentRestoreRank(candidate)
-            if (accentRank >= 0) hits.add(dict.wordAt(accentRank) to accentRank)
+            if (accentRank >= 0) {
+                hits.add(dict.wordAt(accentRank) to
+                    (accentRank * penalty * ACCENT_VARIANT_PENALTY).toInt())
+            }
             val userCount = user?.knownCount(candidate) ?: 0
-            if (userCount > 0) hits.add(candidate to userScore(userCount))
+            if (userCount > 0) hits.add(candidate to (userScore(userCount) * penalty).toInt())
         }
         val n = word.length
         val sb = StringBuilder(word)
-        // Deletions.
-        for (i in 0 until n) {
-            probe(StringBuilder(word).deleteCharAt(i).toString())
-        }
-        // Adjacent transpositions.
+        // Probe in ascending-penalty order so when two edit paths produce
+        // the same string, the cheaper interpretation wins the seen-set.
+        // Adjacent transpositions — the classic fast-typing slip.
         for (i in 0 until n - 1) {
             if (word[i] == word[i + 1]) continue
             sb.setLength(0); sb.append(word)
             sb.setCharAt(i, word[i + 1]); sb.setCharAt(i + 1, word[i])
-            probe(sb.toString())
+            probe(sb.toString(), PENALTY_TRANSPOSE)
         }
-        // Substitutions.
+        // Deletions (an extra character slipped in).
+        for (i in 0 until n) {
+            probe(StringBuilder(word).deleteCharAt(i).toString(), PENALTY_DELETE)
+        }
+        // Insertions (a character was skipped).
+        for (i in 0..n) {
+            for (c in dict.alphabet) {
+                sb.setLength(0); sb.append(word)
+                sb.insert(i, c)
+                probe(sb.toString(), PENALTY_INSERT)
+            }
+        }
+        // Substitutions — cheap for neighbouring keys / accent siblings,
+        // expensive for keys from the other side of the keyboard.
         for (i in 0 until n) {
             for (c in dict.alphabet) {
                 if (c == word[i]) continue
                 sb.setLength(0); sb.append(word)
                 sb.setCharAt(i, c)
-                probe(sb.toString())
-            }
-        }
-        // Insertions.
-        for (i in 0..n) {
-            for (c in dict.alphabet) {
-                sb.setLength(0); sb.append(word)
-                sb.insert(i, c)
-                probe(sb.toString())
+                val penalty = if (isNearMiss(word[i], c)) PENALTY_SUB_NEAR else PENALTY_SUB_FAR
+                probe(sb.toString(), penalty)
             }
         }
         return hits
     }
 
+    /** True when mistyping [a] as [b] is physically plausible: the keys
+     *  neighbour each other on this language's layout, or the two chars
+     *  are accent siblings (a ↔ á). */
+    private fun isNearMiss(a: Char, b: Char): Boolean {
+        if (WordDictionary.deaccent(a.toString()) == WordDictionary.deaccent(b.toString())) return true
+        return adjacency[a]?.contains(b) == true
+    }
+
     /** Conservative auto-correct verdict — see class docs. */
     private fun pickAutoReplace(
         lower: String,
-        typedKnown: Boolean,
+        typedRank: Int,
+        typedTrusted: Boolean,
         accentRank: Int,
-        ranked: List<String>
+        ranked: List<Map.Entry<String, Int>>
     ): String? {
-        if (typedKnown) return null                    // the word is fine as typed
+        if (typedTrusted) return null                  // the word is fine as typed
         if (lower.length < MIN_AUTOREPLACE_LENGTH) return null
         val best = ranked.firstOrNull() ?: return null
+        // Typed word sits in the corpus's deep tail — correctable, but
+        // only by something MUCH more common than itself.
+        val weakKnown = typedRank >= 0
 
         // Accent restoration of a reasonably common word: always confident.
-        if (accentRank in 0 until ACCENT_AUTOREPLACE_MAX_RANK &&
-            dict.accentRestore(lower) == best
-        ) return best
-
-        // Edit-1 correction: only when the winner is common and clearly
-        // dominates the runner-up. Distances are measured on deaccented
-        // skeletons, so "one typo + missing accents" still counts as a
-        // single edit. Completions never auto-replace.
-        val bestRank = dict.rankOf(best)
-        if (bestRank !in 0 until EDIT1_AUTOREPLACE_MAX_RANK) return null
-        val skeleton = WordDictionary.deaccent(lower)
-        if (!isEditDistanceAtMost1(skeleton, WordDictionary.deaccent(best))) return null
-        val second = ranked.getOrNull(1)
-        if (second != null) {
-            val secondRank = dict.rankOf(second)
-            if (secondRank in 0..bestRank * DOMINANCE_FACTOR &&
-                isEditDistanceAtMost1(skeleton, WordDictionary.deaccent(second))
-            ) return null                              // two plausible fixes — stay passive
+        // Longer words get a deeper cap — their skeleton match is near-unique.
+        val accentCap = if (lower.length >= 5) ACCENT_AUTOREPLACE_MAX_RANK_LONG
+                        else ACCENT_AUTOREPLACE_MAX_RANK_SHORT
+        if (accentRank in 0 until accentCap && dict.accentRestore(lower) == best.key &&
+            (!weakKnown || typedRank >= accentRank * WEAK_ACCENT_FACTOR)
+        ) {
+            return best.key
         }
-        return best
+
+        // Edit-1 correction: the winner must be common (cap scales with
+        // word length — long words have few edit-1 neighbours, so deeper
+        // corrections are safe) and clearly dominate the runner-up on
+        // weighted score. Distances are measured on deaccented skeletons
+        // so "one typo + missing accents" still counts as a single edit.
+        val bestRank = dict.rankOf(best.key)
+        val rankCap = when {
+            lower.length >= 6 -> EDIT1_AUTOREPLACE_MAX_RANK_LONG
+            lower.length == 5 -> EDIT1_AUTOREPLACE_MAX_RANK_MID
+            else -> EDIT1_AUTOREPLACE_MAX_RANK_SHORT
+        }
+        val bestIsUserWord = (user?.knownCount(best.key) ?: 0) > 0
+        if (bestRank !in 0 until rankCap && !bestIsUserWord) return null
+        val skeleton = WordDictionary.deaccent(lower)
+        val bestSkeleton = WordDictionary.deaccent(best.key)
+        if (!isEditDistanceAtMost1(skeleton, bestSkeleton)) return null
+        if (weakKnown) {
+            // Accent-only differences must go through the accent branch
+            // above (protects deliberate accents: "vágyok" never becomes
+            // "vagyok"), and a real typo fix must be far more common
+            // than the deep-tail "word" it replaces.
+            if (skeleton == bestSkeleton) return null
+            if (bestRank < 0 || bestRank * WEAK_EDIT_FACTOR > typedRank) return null
+        }
+        val second = ranked.getOrNull(1)
+        if (second != null &&
+            second.value <= maxOf(best.value, SCORE_FLOOR) * DOMINANCE_FACTOR &&
+            isEditDistanceAtMost1(skeleton, WordDictionary.deaccent(second.key))
+        ) return null                                  // two equally plausible fixes — stay passive
+        return best.key
     }
 
     /** True when [b] is within one deletion/insertion/substitution/
@@ -230,12 +281,98 @@ class SuggestionEngine(
         /** Completions are the least certain source: their rank is
          *  multiplied by this. */
         private const val COMPLETION_PENALTY = 2
-        private const val ACCENT_AUTOREPLACE_MAX_RANK = 60_000
-        private const val EDIT1_AUTOREPLACE_MAX_RANK = 30_000
-        /** Runner-up within bestRank×this counts as "competing". */
+        /** Reaching a word through an edit AND the accent map is a
+         *  little less certain than either alone. */
+        private const val ACCENT_VARIANT_PENALTY = 1.2f
+
+        // Slip plausibility. Multiplied onto the frequency rank, so 2.5
+        // means "as convincing as a 2.5× rarer word typed cleanly".
+        private const val PENALTY_TRANSPOSE = 0.9f
+        private const val PENALTY_DELETE = 1.0f
+        private const val PENALTY_INSERT = 1.0f
+        private const val PENALTY_SUB_NEAR = 1.0f
+        private const val PENALTY_SUB_FAR = 2.5f
+
+        private const val ACCENT_AUTOREPLACE_MAX_RANK_SHORT = 60_000
+        private const val ACCENT_AUTOREPLACE_MAX_RANK_LONG = 250_000
+        private const val EDIT1_AUTOREPLACE_MAX_RANK_SHORT = 30_000
+        private const val EDIT1_AUTOREPLACE_MAX_RANK_MID = 80_000
+        private const val EDIT1_AUTOREPLACE_MAX_RANK_LONG = 150_000
+        /** Runner-up within bestScore×this counts as "competing". */
         private const val DOMINANCE_FACTOR = 4
+        /** Corpus rank from which a dictionary entry stops being trusted
+         *  as "the user meant this" — the subtitle corpus tail beyond
+         *  this is riddled with typos and accentless spellings. */
+        private const val WEAK_TYPED_RANK = 10_000
+        /** A weak-known word only yields to its accented sibling when the
+         *  sibling is at least this many times more frequent. */
+        private const val WEAK_ACCENT_FACTOR = 8
+        /** A weak-known word only yields to an edit-1 fix at least this
+         *  many times more frequent than itself. */
+        private const val WEAK_EDIT_FACTOR = 50
+        /** Floor for the dominance comparison so a rank-0 winner doesn't
+         *  make every runner-up look competitive. */
+        private const val SCORE_FLOOR = 50
         /** Score base for user-dictionary words: count 2 lands mid-list,
          *  a word typed dozens of times competes with top corpus words. */
         private const val USER_RANK_BASE = 6_000
+
+        // --- Physical key adjacency ---------------------------------------
+
+        private val adjacencyCache = HashMap<String, Map<Char, String>>()
+
+        @Synchronized
+        private fun adjacencyFor(langId: String): Map<Char, String> =
+            adjacencyCache.getOrPut(langId) { buildAdjacency(keyboardRows(langId)) }
+
+        /** Letter rows of the language's physical layout, padded so that
+         *  vertical neighbours share column indices. */
+        private fun keyboardRows(langId: String): Array<String> = when {
+            // Hungarian QWERTZ: ö/ü/ó live on the number row above p/ő/ú.
+            langId.startsWith("hu") -> arrayOf(
+                "         öüó",
+                "qwertzuiopőú",
+                "asdfghjkléáű",
+                "íyxcvbnm"
+            )
+            langId.startsWith("de") -> arrayOf(
+                "qwertzuiopü",
+                "asdfghjklöä",
+                "yxcvbnm"
+            )
+            langId.startsWith("es") -> arrayOf(
+                "qwertyuiop",
+                "asdfghjklñ",
+                "zxcvbnm"
+            )
+            else -> arrayOf(
+                "qwertyuiop",
+                "asdfghjkl",
+                "zxcvbnm"
+            )
+        }
+
+        private fun buildAdjacency(rows: Array<String>): Map<Char, String> {
+            val out = HashMap<Char, StringBuilder>()
+            fun link(a: Char, b: Char) {
+                if (a == ' ' || b == ' ' || a == b) return
+                out.getOrPut(a) { StringBuilder() }.let { if (!it.contains(b)) it.append(b) }
+                out.getOrPut(b) { StringBuilder() }.let { if (!it.contains(a)) it.append(a) }
+            }
+            for (r in rows.indices) {
+                val row = rows[r]
+                for (c in row.indices) {
+                    if (c + 1 < row.length) link(row[c], row[c + 1])
+                    if (r + 1 < rows.size) {
+                        val below = rows[r + 1]
+                        for (dc in -1..1) {
+                            val j = c + dc
+                            if (j in below.indices) link(row[c], below[j])
+                        }
+                    }
+                }
+            }
+            return out.mapValues { it.value.toString() }
+        }
     }
 }
