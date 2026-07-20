@@ -189,6 +189,33 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
          *  — typing "szó." auto-corrects just like "szó ". Digits and
          *  other symbols deliberately don't (ids, code, "abc1"). */
         private const val PUNCT_BOUNDARIES = ".,!?;:"
+
+        /** Conjunctions that grammatically require a comma before them,
+         *  per language. */
+        private val COMMA_BEFORE: Map<String, Set<String>> = mapOf(
+            "hu_HU" to setOf(
+                "hogy", "de", "mert", "hanem", "viszont", "ugyanis",
+                "hiszen", "mivel", "ami", "aki", "amit", "akit",
+                "amely", "amelyik", "ahol", "amikor", "ahogy", "amiért"
+            ),
+            "de_DE" to setOf(
+                "dass", "weil", "aber", "sondern", "obwohl", "damit",
+                "denn", "wenn", "falls", "während", "sodass"
+            )
+        )
+
+        /** Words after which the comma is NOT inserted — coordinating
+         *  conjunctions form comma-free chains ("és hogy", "vagy aki"),
+         *  and stacking a conjunction on a conjunction never takes one. */
+        private val NO_COMMA_AFTER: Map<String, Set<String>> = mapOf(
+            "hu_HU" to (setOf(
+                "és", "s", "vagy", "meg", "illetve", "azaz",
+                "vagyis", "mint", "akár", "valamint", "se", "sem"
+            ) + COMMA_BEFORE.getValue("hu_HU")),
+            "de_DE" to (setOf(
+                "und", "oder", "sowie", "bzw", "beziehungsweise", "wie"
+            ) + COMMA_BEFORE.getValue("de_DE"))
+        )
     }
 
     override fun onCreateInputView(): View {
@@ -422,6 +449,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             KeyType.ENTER -> {
                 // Enter is a word boundary too — fix the word before the
                 // newline / editor action goes through.
+                maybeInsertCommaBefore()
                 if (!maybeAutocorrect("")) learnCurrentWord()
                 handleEnter(modifiers)
             }
@@ -478,6 +506,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                 if (!altAsAltGr && !modifiers.shouldSendAsKeyEvent() &&
                     c in PUNCT_BOUNDARIES
                 ) {
+                    maybeInsertCommaBefore()
                     if (maybeAutocorrect(c.toString())) handled = true
                     else learnCurrentWord()
                 } else if (!isWordChar(c)) {
@@ -541,7 +570,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             return
         }
         keyboardView?.setSuggestions(
-            SuggestionEngine(dict, userDict(), HunspellStore.validatorFor(currentLayoutId)).suggest(word).suggestions
+            SuggestionEngine(dict, userDict(), HunspellStore.validatorFor(currentLayoutId))
+                .suggest(word, com.pckeyboard.ime.view.SuggestionBarView.MAX_SUGGESTIONS)
+                .suggestions
         )
     }
 
@@ -571,10 +602,49 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      * left of the cursor is replaced before the space goes in.
      */
     private fun handleSpaceCommit() {
+        maybeInsertCommaBefore()
         if (maybeAutocorrect(" ")) return
         // The word survived (or auto-correct is off) — that's a real use.
         learnCurrentWord()
         commitChar(' ')
+    }
+
+    /**
+     * Grammar helper (Auto mode only): Hungarian — and similarly German
+     * — requires a comma before subordinating / adversative
+     * conjunctions ("azt mondta, hogy…", "szép, de drága"). When the
+     * word just finished is such a conjunction and the text before it
+     * ends in a plain word (no comma or sentence punctuation yet, and
+     * not a coordinating word like "és" that forms comma-free chains),
+     * the comma is inserted automatically.
+     */
+    private fun maybeInsertCommaBefore(): Boolean {
+        if (!suggestionsActive() ||
+            kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_AUTO
+        ) return false
+        val commaBefore = COMMA_BEFORE[currentLayoutId] ?: return false
+        val ic = currentInputConnection ?: return false
+        val word = currentWord()
+        if (word.isEmpty() || word.lowercase() !in commaBefore) return false
+        val before = ic.getTextBeforeCursor(MAX_WORD_LOOKBACK, 0)?.toString() ?: return false
+        if (!before.endsWith(word)) return false
+        val prefix = before.dropLast(word.length)
+        var i = prefix.length
+        while (i > 0 && prefix[i - 1] == ' ') i--
+        val spaces = prefix.length - i
+        // Needs a separating space AND a preceding word on the same
+        // sentence: at text start / after punctuation there's no clause
+        // boundary to mark.
+        if (spaces == 0 || i == 0 || !isWordChar(prefix[i - 1])) return false
+        var j = i
+        while (j > 0 && isWordChar(prefix[j - 1])) j--
+        val prevWord = prefix.substring(j, i).lowercase()
+        if (prevWord in (NO_COMMA_AFTER[currentLayoutId] ?: emptySet())) return false
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(word.length + spaces, 0)
+        ic.commitText(", $word", 1)
+        ic.endBatchEdit()
+        return true
     }
 
     /**

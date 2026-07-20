@@ -6,86 +6,78 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.pckeyboard.ime.theme.KeyboardTheme
 
 /**
- * Thin suggestion strip pinned between the popup zone and the keyboard
- * rows. Shows up to [SLOTS] candidates; tapping one commits it via
- * [onPick]. The bar keeps its height when there are no candidates so
- * the keyboard doesn't jump while typing — the slots just go blank.
+ * Suggestion strip pinned between the popup zone and the keyboard rows.
+ * Horizontally scrollable: the best candidate sits leftmost (rendered
+ * bolder), and swiping the strip reveals the longer tail of variants.
+ * Tapping a chip commits it via [onPick]. The bar keeps its height when
+ * there are no candidates so the keyboard doesn't jump while typing.
  */
 class SuggestionBarView(
     context: Context,
     private val theme: KeyboardTheme,
     private val onPick: (String) -> Unit
-) : LinearLayout(context) {
+) : HorizontalScrollView(context) {
 
-    private val slots = mutableListOf<TextView>()
-    private val dividers = mutableListOf<View>()
-
-    init {
-        orientation = HORIZONTAL
-        setBackgroundColor(theme.backgroundColor)
-        for (i in 0 until SLOTS) {
-            if (i > 0) {
-                val divider = View(context).apply {
-                    setBackgroundColor(theme.modifierKeyColor)
-                    layoutParams = LayoutParams(dp(1f), LayoutParams.MATCH_PARENT).apply {
-                        topMargin = dp(10f); bottomMargin = dp(10f)
-                    }
-                    visibility = INVISIBLE
-                }
-                dividers.add(divider)
-                addView(divider)
-            }
-            val slot = TextView(context).apply {
-                gravity = Gravity.CENTER
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-                setTextColor(theme.keyTextColor)
-                typeface = if (i == 1) Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                           else Typeface.create("sans-serif", Typeface.NORMAL)
-                layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
-                isClickable = true
-                setOnClickListener {
-                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    (tag as? String)?.let(onPick)
-                }
-            }
-            slots.add(slot)
-            addView(slot)
-        }
+    private val row = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
     }
 
-    /** Updates the strip. Best candidate goes to the middle slot, second
-     *  to the left, third to the right — the Gboard convention users'
-     *  thumbs already know. */
+    init {
+        setBackgroundColor(theme.backgroundColor)
+        isHorizontalScrollBarEnabled = false
+        isFillViewport = true
+        addView(row, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
+    }
+
     fun setSuggestions(words: List<String>) {
-        val bySlot = arrayOfNulls<String>(SLOTS)
-        words.getOrNull(0)?.let { bySlot[1] = it }
-        words.getOrNull(1)?.let { bySlot[0] = it }
-        words.getOrNull(2)?.let { bySlot[2] = it }
-        for (i in 0 until SLOTS) {
-            slots[i].text = bySlot[i] ?: ""
-            slots[i].tag = bySlot[i]
+        row.removeAllViews()
+        for ((i, word) in words.withIndex()) {
+            if (i > 0) row.addView(makeDivider())
+            row.addView(makeChip(word, best = i == 0))
         }
-        for ((i, divider) in dividers.withIndex()) {
-            // Divider i sits before slot i+1 — show it only when both
-            // neighbours have content.
-            divider.visibility =
-                if (bySlot[i] != null && bySlot[i + 1] != null) VISIBLE else INVISIBLE
+        scrollTo(0, 0)
+    }
+
+    private fun makeChip(word: String, best: Boolean): TextView =
+        TextView(context).apply {
+            text = word
+            gravity = Gravity.CENTER
+            maxLines = 1
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTextColor(if (best) theme.accentColor else theme.keyTextColor)
+            typeface = if (best) Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                       else Typeface.create("sans-serif", Typeface.NORMAL)
+            minimumWidth = dp(88f)
+            setPadding(dp(14f), 0, dp(14f), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT
+            )
+            isClickable = true
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onPick(word)
+            }
         }
+
+    private fun makeDivider(): View = View(context).apply {
+        setBackgroundColor(theme.modifierKeyColor)
+        layoutParams = LinearLayout.LayoutParams(dp(1f), LinearLayout.LayoutParams.MATCH_PARENT)
+            .apply { topMargin = dp(10f); bottomMargin = dp(10f) }
     }
 
     private fun dp(v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
 
     companion object {
-        const val SLOTS = 3
         /** Bar height in dp — added to the IME view height while mounted. */
         const val BAR_DP = 42f
+        /** How many candidates the strip requests from the engine. */
+        const val MAX_SUGGESTIONS = 8
     }
 }
