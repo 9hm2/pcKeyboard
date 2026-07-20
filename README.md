@@ -42,8 +42,10 @@ Ctrl 🌐 Alt        space      123  ◀ ▼ ▶
   dictionaries (HU 400k / DE 250k / EN 250k / ES 250k word forms,
   inflections included, ~5.4 MB total) power a passive suggestion strip
   with accent restoration (`kerdojel` → `kérdőjel`), typo correction
-  and word completion; an opt-in Auto mode fixes obvious typos on Space
-  with a Backspace undo. A per-language **learning dictionary** picks up
+  and word completion; an opt-in Auto mode fixes obvious typos at word
+  boundaries (Space, punctuation, Enter, tap-away) — retyping a
+  corrected word keeps it and teaches it permanently. A per-language
+  **learning dictionary** picks up
   the user's own words: anything typed twice is suggested from then on
   and shielded from auto-correction. Off / Suggest / Auto in Settings.
 
@@ -247,9 +249,11 @@ Long-press the 🌐 key to open a vertical action menu anchored above it.
   from the keyboard by long-pressing the slot itself.
 - **Autocorrect** — `Off` / `Suggest` (default; passive candidate strip
   above the keys, never edits your text) / `Auto` (additionally replaces
-  a confidently-wrong word when Space is hit; an immediate Backspace
-  undoes it and vetoes that word for the session). Suggestions are
-  disabled automatically in password / URL / email fields and terminals.
+  a confidently-wrong word at word boundaries: Space, punctuation,
+  Enter, or tapping elsewhere in the text; retyping the corrected word
+  keeps your spelling, vetoes it and teaches it permanently — Backspace
+  itself always just deletes). Suggestions are disabled automatically in
+  password / URL / email fields and terminals.
 - **Themes** — built-in (Light / Dark / Black) plus any custom themes the
   user has saved; **+ New theme** opens the editor.
 - **Languages** — switches per language; the globe cycles only the enabled

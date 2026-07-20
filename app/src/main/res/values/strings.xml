@@ -35,7 +35,7 @@
     <string name="settings_right_of_space_emoji">😀 Emoji</string>
     <string name="settings_right_of_space_alt">⌥ Alt</string>
     <string name="settings_autocorrect">Autocorrect</string>
-    <string name="settings_autocorrect_hint">Suggest shows word candidates above the keys without ever changing your text. Auto also fixes obvious typos when you hit Space — Backspace right after undoes it.</string>
+    <string name="settings_autocorrect_hint">Suggest shows word candidates above the keys without ever changing your text. Auto also fixes obvious typos at word boundaries — retype a corrected word to keep your spelling and teach it permanently.</string>
     <string name="settings_autocorrect_off">Off</string>
     <string name="settings_autocorrect_suggest">Suggest</string>
     <string name="settings_autocorrect_auto">Auto</string>

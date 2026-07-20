@@ -64,15 +64,16 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     /** Per-editor verdict from [shouldSuggestFor] — false for passwords,
      *  terminals, URL bars etc. */
     private var suggestionsEnabled = false
-    /** Set when the last committed word was auto-corrected:
-     *  (original, replacement, boundary char that triggered it — space
-     *  or punctuation). An immediate Backspace undoes the correction;
-     *  any other key clears it. */
-    private var lastAutocorrect: Triple<String, String, String>? = null
-    /** Words whose auto-correction the user undid this session — never
-     *  auto-corrected again until the IME restarts. (The undo also
-     *  force-learns the word into the persistent [UserDictionary], so
-     *  the veto outlives the session too.) */
+    /** The (lowercase) original of the most recent auto-correction.
+     *  If the very next committed word is this same word retyped, the
+     *  user is insisting — it's kept, force-learned and vetoed instead
+     *  of being corrected again. Deliberately survives Backspace and
+     *  letter keys so the delete-and-retype flow reaches it. */
+    private var pendingInsist: String? = null
+    /** Words the user insisted on this session (retyped right after an
+     *  auto-correction) — never corrected again until the IME restarts.
+     *  (The insistence also force-learns the word into the persistent
+     *  [UserDictionary], so the veto outlives the session too.) */
     private val autocorrectVetoes = mutableSetOf<String>()
     /** True while the previous input event was a plain letter commit —
      *  the state in which a sudden cursor jump means "the user tapped
@@ -228,7 +229,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // Autocorrect: decide per editor whether the suggestion bar makes
         // sense, and warm up the dictionary for the active language.
         suggestionsEnabled = shouldSuggestFor(info)
-        lastAutocorrect = null
+        pendingInsist = null
         lastEventWasTyping = false
         val showBar = suggestionsEnabled &&
             kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF
@@ -407,24 +408,17 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onKey(key: Key, modifiers: ModifierState) {
         if (currentInputConnection == null) return
-        // Backspace first — it may be the undo of a fresh auto-correction.
         if (key.type == KeyType.BACKSPACE) {
-            if (!undoAutocorrectIfPending()) sendKey(KeyEvent.KEYCODE_DEL, modifiers)
+            sendKey(KeyEvent.KEYCODE_DEL, modifiers)
             updateSuggestions()
             return
         }
-        // Any other key closes the undo window; Space / punctuation may
-        // open a fresh one below (maybeAutocorrect sets it).
-        lastAutocorrect = null
         lastEventWasTyping = false
         when (key.type) {
             KeyType.SPACE -> handleSpaceCommit()
             KeyType.ENTER -> {
                 // Enter is a word boundary too — fix the word before the
-                // newline / editor action goes through. (The Backspace
-                // undo naturally can't survive a sent message; the
-                // text-verification guard in undoAutocorrectIfPending
-                // keeps it safe.)
+                // newline / editor action goes through.
                 if (!maybeAutocorrect("")) learnCurrentWord()
                 handleEnter(modifiers)
             }
@@ -559,6 +553,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (!suggestionsActive()) return
         val dict = DictionaryStore.peek(currentLayoutId) ?: return
         val word = currentWord()
+        // Committing a different word closes the retype-to-keep window.
+        if (word.isNotEmpty() && word.lowercase() != pendingInsist) pendingInsist = null
         if (word.length < 2 || word.length > 32) return
         val lower = word.lowercase()
         if (lower.any { !isWordChar(it) }) return
@@ -597,7 +593,6 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (!jumped) return
         if (lastEventWasTyping) {
             lastEventWasTyping = false
-            lastAutocorrect = null
             maybeAutocorrectAt(oldSelEnd, newSelEnd)
         }
         // Whatever happened, the strip should describe the word at the
@@ -639,6 +634,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val word = text.substring(start, endIdx)
         if (word.length < 2 || word.length > 32) return
         if (word.lowercase() in autocorrectVetoes) return
+        if (consumeInsistIfRetyped(word)) return
         val replacement = SuggestionEngine(dict, userDict()).suggest(word).autoReplace ?: return
         if (replacement == word) return
         val delta = replacement.length - word.length
@@ -651,13 +647,15 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val target = (if (caret >= endIdx + off) caret + delta else caret).coerceAtLeast(0)
         ic.setSelection(target, target)
         ic.endBatchEdit()
+        pendingInsist = word.lowercase()
     }
 
     /**
      * Attempts an auto-correction of the word left of the cursor at a
      * word boundary ([boundary] is the space / punctuation about to be
      * committed). On success commits "replacement + boundary" in one
-     * batch, arms the Backspace-undo window, and returns true.
+     * batch and remembers the original: retyping it right away means
+     * the user insists on it (see [consumeInsistIfRetyped]).
      */
     private fun maybeAutocorrect(boundary: String): Boolean {
         if (!suggestionsActive() ||
@@ -667,38 +665,31 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val dict = DictionaryStore.peek(currentLayoutId) ?: return false
         val word = currentWord()
         if (word.isEmpty() || word.lowercase() in autocorrectVetoes) return false
+        if (consumeInsistIfRetyped(word)) return false
         val replacement = SuggestionEngine(dict, userDict()).suggest(word).autoReplace
         if (replacement == null || replacement == word) return false
         ic.beginBatchEdit()
         ic.deleteSurroundingText(word.length, 0)
         ic.commitText(replacement + boundary, 1)
         ic.endBatchEdit()
-        lastAutocorrect = Triple(word, replacement, boundary)
+        pendingInsist = word.lowercase()
         return true
     }
 
     /**
-     * Backspace pressed right after an auto-correction: restore what the
-     * user actually typed (plus the space) and veto that word for the
-     * rest of the session — the user has spoken.
+     * The delete-and-retype escape hatch: when the word about to be
+     * committed is the same one the previous auto-correction replaced,
+     * the user is insisting on their spelling. Keep it, learn it
+     * permanently, and never correct it again. Returns true when the
+     * insistence was consumed (the caller must then commit the word
+     * exactly as typed).
      */
-    private fun undoAutocorrectIfPending(): Boolean {
-        val (original, replacement, boundary) = lastAutocorrect ?: return false
-        lastAutocorrect = null
-        val ic = currentInputConnection ?: return false
-        // Only undo when the corrected text is really still there —
-        // the user may have tapped elsewhere in the meantime.
-        val expect = replacement + boundary
-        val actual = ic.getTextBeforeCursor(expect.length, 0)?.toString()
-        if (actual != expect) return false
-        ic.beginBatchEdit()
-        ic.deleteSurroundingText(expect.length, 0)
-        ic.commitText(original + boundary, 1)
-        ic.endBatchEdit()
-        autocorrectVetoes.add(original.lowercase())
-        // Undoing a correction is the strongest "I meant that" — learn
-        // the word permanently so it's suggested and never touched again.
-        userDict().forceLearn(original.lowercase())
+    private fun consumeInsistIfRetyped(word: String): Boolean {
+        val lower = word.lowercase()
+        if (lower != pendingInsist) return false
+        pendingInsist = null
+        autocorrectVetoes.add(lower)
+        userDict().forceLearn(lower)
         return true
     }
 
@@ -847,7 +838,6 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         moveCursor(dx, dy, null)
         // The cursor left the word we were watching; blank the strip and
         // let the next keypress recompute it (avoids an IPC per step).
-        lastAutocorrect = null
         lastEventWasTyping = false
         keyboardView?.setSuggestions(emptyList())
     }
@@ -933,7 +923,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onText(text: String) {
         if (text.isEmpty()) return
         currentInputConnection?.commitText(text, 1)
-        lastAutocorrect = null
+        pendingInsist = null
         lastEventWasTyping = false
         updateSuggestions()
     }
@@ -942,7 +932,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      *  candidate and move on with a trailing space. */
     override fun onSuggestionPicked(word: String) {
         val ic = currentInputConnection ?: return
-        lastAutocorrect = null
+        pendingInsist = null
         lastEventWasTyping = false
         val current = currentWord()
         ic.beginBatchEdit()
