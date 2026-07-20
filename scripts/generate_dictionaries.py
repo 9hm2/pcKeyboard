@@ -6,9 +6,12 @@ Input: the OpenSubtitles-2018 frequency lists from
 https://github.com/hermitdave/FrequencyWords (CC-BY-SA 4.0) — one
 "word count" pair per line, ordered by descending frequency.
 
-Output: <lang_id>.txt.gz with one lowercase word per line, ordered by
-descending frequency (the line number IS the frequency rank), filtered
-to alphabetic words of the language and truncated to MAX_WORDS.
+Output: <lang_id>.dict — a gzip stream with one lowercase word per
+line, ordered by descending frequency (the line number IS the frequency
+rank), filtered to alphabetic words of the language and truncated to
+MAX_WORDS. The extension is deliberately NOT .gz: aapt2 transparently
+decompresses and renames assets ending in .gz while packaging the APK,
+which would break the runtime path (and its GZIPInputStream).
 
 Usage:
     python3 scripts/generate_dictionaries.py <input_dir> [<output_dir>]
@@ -58,7 +61,7 @@ def generate(lang_id, src_path, pattern, max_words, out_dir):
             words.append(token)
             if len(words) >= max_words:
                 break
-    out_path = out_dir / f"{lang_id}.txt.gz"
+    out_path = out_dir / f"{lang_id}.dict"
     with gzip.open(out_path, "wt", encoding="utf-8") as f:
         f.write("\n".join(words))
     print(f"{lang_id}: {len(words)} words -> {out_path} "

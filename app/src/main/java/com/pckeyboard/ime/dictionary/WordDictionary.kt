@@ -87,11 +87,15 @@ class WordDictionary private constructor(
     companion object {
         private const val COMPLETION_SCAN_CAP = 60_000
 
-        /** Loads `assets/dict/<langId>.txt.gz`, or null when the language
-         *  ships no dictionary or the asset is unreadable. */
+        /** Loads `assets/dict/<langId>.dict` (gzip-compressed word list —
+         *  the neutral extension matters: aapt2 transparently *decompresses
+         *  and renames* assets ending in `.gz` while packaging, so a
+         *  `.txt.gz` asset simply doesn't exist under that name in the
+         *  APK). Returns null when the language ships no dictionary or
+         *  the asset is unreadable. */
         fun load(context: Context, langId: String): WordDictionary? {
             val lines = try {
-                context.assets.open("dict/$langId.txt.gz").use { raw ->
+                context.assets.open("dict/$langId.dict").use { raw ->
                     GZIPInputStream(raw).bufferedReader().readLines()
                 }
             } catch (_: Throwable) {
