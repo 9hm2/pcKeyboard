@@ -74,6 +74,11 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      *  force-learns the word into the persistent [UserDictionary], so
      *  the veto outlives the session too.) */
     private val autocorrectVetoes = mutableSetOf<String>()
+    /** True while the previous input event was a plain letter commit —
+     *  the state in which a sudden cursor jump means "the user tapped
+     *  somewhere else mid-word" and the abandoned word deserves the same
+     *  auto-correction a Space would have given it. */
+    private var lastEventWasTyping = false
     /** Lazily-created per-language learning dictionaries. */
     private val userDicts = mutableMapOf<String, UserDictionary>()
 
@@ -224,6 +229,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // sense, and warm up the dictionary for the active language.
         suggestionsEnabled = shouldSuggestFor(info)
         lastAutocorrect = null
+        lastEventWasTyping = false
         val showBar = suggestionsEnabled &&
             kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF
         keyboardView?.setSuggestionBarVisible(showBar)
@@ -410,10 +416,16 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // Any other key closes the undo window; Space / punctuation may
         // open a fresh one below (maybeAutocorrect sets it).
         lastAutocorrect = null
+        lastEventWasTyping = false
         when (key.type) {
             KeyType.SPACE -> handleSpaceCommit()
             KeyType.ENTER -> {
-                learnCurrentWord()
+                // Enter is a word boundary too — fix the word before the
+                // newline / editor action goes through. (The Backspace
+                // undo naturally can't survive a sent message; the
+                // text-verification guard in undoAutocorrectIfPending
+                // keeps it safe.)
+                if (!maybeAutocorrect("")) learnCurrentWord()
                 handleEnter(modifiers)
             }
             KeyType.DELETE -> sendKey(KeyEvent.KEYCODE_FORWARD_DEL, modifiers)
@@ -481,6 +493,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                         if (code != 0) sendKey(code, modifiers) else commitChar(c)
                     }
                     else -> commitChar(c)
+                }
+                if (isWordChar(c) && !modifiers.shouldSendAsKeyEvent()) {
+                    lastEventWasTyping = true
                 }
             }
             else -> {}
@@ -561,6 +576,69 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // The word survived (or auto-correct is off) — that's a real use.
         learnCurrentWord()
         commitChar(' ')
+    }
+
+    /**
+     * Tap-away correction: when the user taps somewhere else in the text
+     * while mid-word, the abandoned word gets the same auto-correction a
+     * Space would have applied. Detected here because a tap is the one
+     * cursor move the IME never sees as a key event.
+     */
+    override fun onUpdateSelection(
+        oldSelStart: Int, oldSelEnd: Int,
+        newSelStart: Int, newSelEnd: Int,
+        candidatesStart: Int, candidatesEnd: Int
+    ) {
+        super.onUpdateSelection(
+            oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd
+        )
+        val jumped = newSelStart == newSelEnd &&
+            kotlin.math.abs(newSelEnd - oldSelEnd) > 1
+        if (!jumped) return
+        if (lastEventWasTyping) {
+            lastEventWasTyping = false
+            lastAutocorrect = null
+            maybeAutocorrectAt(oldSelEnd, newSelEnd)
+        }
+        // Whatever happened, the strip should describe the word at the
+        // NEW cursor position, not the abandoned one.
+        updateSuggestions()
+    }
+
+    /**
+     * Retroactively corrects the word ending at absolute position [end]
+     * while the caret already sits at [caret]. Replaces the word via a
+     * select-and-commit batch and puts the caret back, shifted by the
+     * length delta when it sat behind the corrected word. No undo window
+     * — Backspace at the new caret must keep deleting there.
+     */
+    private fun maybeAutocorrectAt(end: Int, caret: Int) {
+        if (!suggestionsActive() ||
+            kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_AUTO
+        ) return
+        val ic = currentInputConnection ?: return
+        val dict = DictionaryStore.peek(currentLayoutId) ?: return
+        val ext = ic.getExtractedText(ExtractedTextRequest(), 0) ?: return
+        val text = ext.text?.toString() ?: return
+        val off = ext.startOffset
+        val endIdx = (end - off).coerceIn(0, text.length)
+        // The old caret must have been sitting at the end of a word.
+        if (endIdx == 0 || !isWordChar(text[endIdx - 1])) return
+        if (endIdx < text.length && isWordChar(text[endIdx])) return
+        var start = endIdx
+        while (start > 0 && isWordChar(text[start - 1])) start--
+        val word = text.substring(start, endIdx)
+        if (word.length < 2 || word.length > 32) return
+        if (word.lowercase() in autocorrectVetoes) return
+        val replacement = SuggestionEngine(dict, userDict()).suggest(word).autoReplace ?: return
+        if (replacement == word) return
+        val delta = replacement.length - word.length
+        ic.beginBatchEdit()
+        ic.setSelection(start + off, endIdx + off)
+        ic.commitText(replacement, 1)          // replaces the selection
+        val target = if (caret >= endIdx + off) caret + delta else caret
+        ic.setSelection(target.coerceAtLeast(0), target.coerceAtLeast(0))
+        ic.endBatchEdit()
     }
 
     /**
@@ -758,6 +836,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // The cursor left the word we were watching; blank the strip and
         // let the next keypress recompute it (avoids an IPC per step).
         lastAutocorrect = null
+        lastEventWasTyping = false
         keyboardView?.setSuggestions(emptyList())
     }
 
@@ -843,6 +922,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (text.isEmpty()) return
         currentInputConnection?.commitText(text, 1)
         lastAutocorrect = null
+        lastEventWasTyping = false
         updateSuggestions()
     }
 
@@ -851,6 +931,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onSuggestionPicked(word: String) {
         val ic = currentInputConnection ?: return
         lastAutocorrect = null
+        lastEventWasTyping = false
         val current = currentWord()
         ic.beginBatchEdit()
         if (current.isNotEmpty()) ic.deleteSurroundingText(current.length, 0)
