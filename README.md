@@ -38,6 +38,11 @@ Ctrl 🌐 Alt        space      123  ◀ ▼ ▶
   progress dialog and a FileProvider hand-off to the system installer.
 - **Custom themes** with an ARGB colour picker (sliders + hex display +
   Default reset) and a live preview against the actual keyboard view.
+- **Offline autocorrect & suggestions** — per-language frequency
+  dictionaries (HU / EN / DE / ES, ~1.8 MB total) power a passive
+  suggestion strip with accent restoration (`kerdojel` → `kérdőjel`),
+  typo correction and word completion; an opt-in Auto mode fixes obvious
+  typos on Space with a Backspace undo. Off / Suggest / Auto in Settings.
 
 ## Layout
 
@@ -234,8 +239,14 @@ Long-press the 🌐 key to open a vertical action menu anchored above it.
   key, both popup-character and trackpad gestures.
 - **Trackpad sensitivity** (0.3× – 3.0×) — captured at arming time so cursor
   speed stays consistent for the whole touchpad session.
-- **Right-of-Space slot** — `123 Symbols` (default) or `😀 Emoji`. Picks
-  what tapping that one slot does.
+- **Right-of-Space slot** — `123 Symbols` (default), `😀 Emoji` or `⌥ Alt`
+  (a second sticky AltGr for the right thumb). Also reassignable straight
+  from the keyboard by long-pressing the slot itself.
+- **Autocorrect** — `Off` / `Suggest` (default; passive candidate strip
+  above the keys, never edits your text) / `Auto` (additionally replaces
+  a confidently-wrong word when Space is hit; an immediate Backspace
+  undoes it and vetoes that word for the session). Suggestions are
+  disabled automatically in password / URL / email fields and terminals.
 - **Themes** — built-in (Light / Dark / Black) plus any custom themes the
   user has saved; **+ New theme** opens the editor.
 - **Languages** — switches per language; the globe cycles only the enabled
@@ -424,3 +435,9 @@ service/      PcKeyboardService — InputMethodService entry-point. Converts
 ## License
 
 GPL v3 — see [LICENSE](LICENSE).
+
+The word-frequency dictionaries in `app/src/main/assets/dict/` are
+derived from the OpenSubtitles-2018 frequency lists published in
+[hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords)
+(CC-BY-SA 4.0); see `scripts/generate_dictionaries.py` for how they're
+produced.

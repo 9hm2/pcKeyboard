@@ -10,9 +10,12 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputMethodSubtype
+import android.text.InputType
 import com.pckeyboard.ime.clipboard.ClipboardEditorActivity
 import com.pckeyboard.ime.clipboard.ClipboardEditorBridge
 import com.pckeyboard.ime.clipboard.ClipboardHistory
+import com.pckeyboard.ime.dictionary.DictionaryStore
+import com.pckeyboard.ime.dictionary.SuggestionEngine
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
 import com.pckeyboard.ime.model.Key
@@ -55,6 +58,18 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var currentLayoutId: String = "en_US"
     private var currentMode: LayoutMode = LayoutMode.MAIN
     private var keyboardView: KeyboardView? = null
+
+    // --- Autocorrect / suggestion state ---------------------------------
+    /** Per-editor verdict from [shouldSuggestFor] — false for passwords,
+     *  terminals, URL bars etc. */
+    private var suggestionsEnabled = false
+    /** Set when the last committed word was auto-corrected: original →
+     *  replacement. An immediate Backspace undoes the correction; any
+     *  other key clears it. */
+    private var lastAutocorrect: Pair<String, String>? = null
+    /** Words whose auto-correction the user undid this session — never
+     *  auto-corrected again until the IME restarts. */
+    private val autocorrectVetoes = mutableSetOf<String>()
 
     // When the keyboard is opened by a co-operating terminal (NeoTerm) it
     // advertises its colours through EditorInfo.extras; we derive a theme from
@@ -151,6 +166,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         private const val EMOJI_STATE = "__emoji__"
         /** How many lines Page Up / Page Down skips. */
         private const val PAGE_LINES = 10
+        /** How far left of the cursor [currentWord] looks for the start
+         *  of the word being typed. */
+        private const val MAX_WORD_LOOKBACK = 48
     }
 
     override fun onCreateInputView(): View {
@@ -189,6 +207,17 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.updateTheme(activeTheme())
         bindCurrentLayout()
         keyboardView?.applySizingPrefs()
+        // Autocorrect: decide per editor whether the suggestion bar makes
+        // sense, and warm up the dictionary for the active language.
+        suggestionsEnabled = shouldSuggestFor(info)
+        lastAutocorrect = null
+        val showBar = suggestionsEnabled &&
+            kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF
+        keyboardView?.setSuggestionBarVisible(showBar)
+        if (showBar) {
+            DictionaryStore.preload(this, currentLayoutId)
+            keyboardView?.setSuggestions(emptyList())
+        }
         // If the user finished the clipboard editor with Send, commit the
         // edited text and persist the replacement into the history.
         ClipboardEditorBridge.consume()?.let { r ->
@@ -310,6 +339,11 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             kbPrefs.rightOfSpaceAction
         )
         view.bind(finalLayout, activeTheme())
+        // Keep the active language's dictionary warm so suggestions are
+        // ready the moment the user starts typing after a switch.
+        if (kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF) {
+            DictionaryStore.preload(this, currentLayoutId)
+        }
     }
 
     /** Rewrites the control-row "123" SYMBOL_SWITCH key into whatever the
@@ -355,9 +389,11 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onKey(key: Key, modifiers: ModifierState) {
         if (currentInputConnection == null) return
         when (key.type) {
-            KeyType.SPACE -> commitChar(' ')
+            KeyType.SPACE -> handleSpaceCommit()
             KeyType.ENTER -> handleEnter(modifiers)
-            KeyType.BACKSPACE -> sendKey(KeyEvent.KEYCODE_DEL, modifiers)
+            KeyType.BACKSPACE -> {
+                if (!undoAutocorrectIfPending()) sendKey(KeyEvent.KEYCODE_DEL, modifiers)
+            }
             KeyType.DELETE -> sendKey(KeyEvent.KEYCODE_FORWARD_DEL, modifiers)
             KeyType.TAB -> sendKey(KeyEvent.KEYCODE_TAB, modifiers)
             KeyType.ESC -> sendKey(KeyEvent.KEYCODE_ESCAPE, modifiers)
@@ -415,6 +451,126 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             }
             else -> {}
         }
+        // Autocorrect bookkeeping: any key other than Space clears the
+        // pending undo window (Space sets it in handleSpaceCommit, the
+        // undoing Backspace already consumed it), and the suggestion bar
+        // is recomputed from the editor's actual text so it stays honest
+        // across cursor motion, deletes and mode switches.
+        if (key.type != KeyType.SPACE) lastAutocorrect = null
+        updateSuggestions()
+    }
+
+    // --- Autocorrect ------------------------------------------------------
+
+    /** Word-characters accepted into the tracked word. */
+    private fun isWordChar(c: Char): Boolean = c.isLetter() || c == '\''
+
+    /** The word fragment immediately left of the cursor, read from the
+     *  editor itself (robust against cursor taps we never see). Empty
+     *  when the cursor isn't at the end of a word or the fragment is
+     *  implausibly long. */
+    private fun currentWord(): String {
+        val ic = currentInputConnection ?: return ""
+        val before = ic.getTextBeforeCursor(MAX_WORD_LOOKBACK, 0) ?: return ""
+        var i = before.length
+        while (i > 0 && isWordChar(before[i - 1])) i--
+        // A fragment that fills the whole lookback window has no visible
+        // start — don't guess.
+        if (i == 0 && before.length == MAX_WORD_LOOKBACK) return ""
+        return before.subSequence(i, before.length).toString()
+    }
+
+    private fun suggestionsActive(): Boolean =
+        suggestionsEnabled &&
+            kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF &&
+            keyboardView != null
+
+    /** Recomputes the suggestion strip for the word left of the cursor. */
+    private fun updateSuggestions() {
+        if (!suggestionsActive()) return
+        val dict = DictionaryStore.peek(currentLayoutId)
+        if (dict == null) {
+            keyboardView?.setSuggestions(emptyList())
+            return
+        }
+        val word = currentWord()
+        if (word.isEmpty()) {
+            keyboardView?.setSuggestions(emptyList())
+            return
+        }
+        keyboardView?.setSuggestions(SuggestionEngine(dict).suggest(word).suggestions)
+    }
+
+    /**
+     * Space commit with optional auto-correction. In [KeyboardPrefs.AUTOCORRECT_AUTO]
+     * mode a confidently-wrong word left of the cursor is replaced before
+     * the space goes in; the original is remembered so an immediate
+     * Backspace can undo the whole thing.
+     */
+    private fun handleSpaceCommit() {
+        val ic = currentInputConnection ?: return
+        lastAutocorrect = null
+        if (suggestionsActive() && kbPrefs.autocorrectMode == KeyboardPrefs.AUTOCORRECT_AUTO) {
+            val dict = DictionaryStore.peek(currentLayoutId)
+            val word = if (dict != null) currentWord() else ""
+            if (dict != null && word.isNotEmpty() &&
+                word.lowercase() !in autocorrectVetoes
+            ) {
+                val replacement = SuggestionEngine(dict).suggest(word).autoReplace
+                if (replacement != null && replacement != word) {
+                    ic.beginBatchEdit()
+                    ic.deleteSurroundingText(word.length, 0)
+                    ic.commitText("$replacement ", 1)
+                    ic.endBatchEdit()
+                    lastAutocorrect = word to replacement
+                    return
+                }
+            }
+        }
+        commitChar(' ')
+    }
+
+    /**
+     * Backspace pressed right after an auto-correction: restore what the
+     * user actually typed (plus the space) and veto that word for the
+     * rest of the session — the user has spoken.
+     */
+    private fun undoAutocorrectIfPending(): Boolean {
+        val (original, replacement) = lastAutocorrect ?: return false
+        lastAutocorrect = null
+        val ic = currentInputConnection ?: return false
+        // Only undo when the corrected text is really still there —
+        // the user may have tapped elsewhere in the meantime.
+        val expect = "$replacement "
+        val actual = ic.getTextBeforeCursor(expect.length, 0)?.toString()
+        if (actual != expect) return false
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(expect.length, 0)
+        ic.commitText("$original ", 1)
+        ic.endBatchEdit()
+        autocorrectVetoes.add(original.lowercase())
+        return true
+    }
+
+    /** True for editors where showing suggestions / correcting is
+     *  appropriate: plain text fields — not passwords, URL bars, email
+     *  address fields, terminals, or fields that opted out. */
+    private fun shouldSuggestFor(info: EditorInfo?): Boolean {
+        if (info == null) return false
+        if (isTerminalLikeEditor()) return false
+        val t = info.inputType
+        if (t and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
+        if (t and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0) return false
+        when (t and InputType.TYPE_MASK_VARIATION) {
+            InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_URI,
+            InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+            InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
+            InputType.TYPE_TEXT_VARIATION_FILTER -> return false
+        }
+        return true
     }
 
     private fun pickChar(key: Key, modifiers: ModifierState): Char {
@@ -539,6 +695,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     /** Trackpad cursor motion — no modifier semantics. */
     override fun onCursorMove(dx: Int, dy: Int) {
         moveCursor(dx, dy, null)
+        // The cursor left the word we were watching; blank the strip and
+        // let the next keypress recompute it (avoids an IPC per step).
+        lastAutocorrect = null
+        keyboardView?.setSuggestions(emptyList())
     }
 
     override fun onMenuAction(action: MenuAction) {
@@ -622,6 +782,21 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onText(text: String) {
         if (text.isEmpty()) return
         currentInputConnection?.commitText(text, 1)
+        lastAutocorrect = null
+        updateSuggestions()
+    }
+
+    /** Suggestion-bar tap: replace the word being typed with the picked
+     *  candidate and move on with a trailing space. */
+    override fun onSuggestionPicked(word: String) {
+        val ic = currentInputConnection ?: return
+        lastAutocorrect = null
+        val current = currentWord()
+        ic.beginBatchEdit()
+        if (current.isNotEmpty()) ic.deleteSurroundingText(current.length, 0)
+        ic.commitText("$word ", 1)
+        ic.endBatchEdit()
+        keyboardView?.setSuggestions(emptyList())
     }
 
     /**

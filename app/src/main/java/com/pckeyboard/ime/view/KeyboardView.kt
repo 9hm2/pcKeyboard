@@ -76,6 +76,11 @@ class KeyboardView @JvmOverloads constructor(
     // backspace presses into its query while it's mounted.
     private var emojiSearchHeader: EmojiSearchHeaderView? = null
 
+    // Autocorrect suggestion strip — when present, sits inside
+    // mainContainer directly above the keyboard rows. Mounted only for
+    // editors where suggestions make sense (the IME service decides).
+    private var suggestionBar: SuggestionBarView? = null
+
     // Clipboard manager overlay.
     private var clipboardView: com.pckeyboard.ime.clipboard.ClipboardView? = null
     private val clipHistory = com.pckeyboard.ime.clipboard.ClipboardHistory(context)
@@ -145,7 +150,8 @@ class KeyboardView @JvmOverloads constructor(
             //  + dp(SEARCH_HEADER_DP) when the emoji search bar is up,
             //    so the keyboard rows keep their normal size.
             val extra = dp(POPUP_ZONE_DP) +
-                if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0
+                (if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0) +
+                (if (suggestionBar != null) dp(SuggestionBarView.BAR_DP) else 0)
             val targetHeight = (base * prefs.heightScale).toInt() + extra
             val resolved = if (mode == MeasureSpec.AT_MOST) {
                 minOf(MeasureSpec.getSize(heightMeasureSpec), targetHeight)
@@ -700,6 +706,41 @@ class KeyboardView @JvmOverloads constructor(
         requestLayout()
     }
 
+    // --- Autocorrect suggestion bar ---------------------------------------
+
+    /**
+     * Mounts / unmounts the suggestion strip. The IME service calls this
+     * on every input session start with its per-editor verdict (text
+     * fields yes; passwords, terminals, URL bars no). Remounting picks
+     * up the current theme.
+     */
+    fun setSuggestionBarVisible(visible: Boolean) {
+        if (!visible) {
+            suggestionBar?.let { mainContainer.removeView(it) }
+            suggestionBar = null
+            requestLayout()
+            return
+        }
+        val theme = theme ?: return
+        // Recreate so a theme change since last session is applied.
+        suggestionBar?.let { mainContainer.removeView(it) }
+        val bar = SuggestionBarView(context, theme) { word ->
+            listener?.onSuggestionPicked(word)
+        }
+        suggestionBar = bar
+        // Directly above the keyboard rows, below popupZone (and below
+        // the emoji search header if one is up).
+        mainContainer.addView(bar, mainContainer.indexOfChild(rowsContainer),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(SuggestionBarView.BAR_DP)
+            ))
+        requestLayout()
+    }
+
+    fun setSuggestions(words: List<String>) {
+        suggestionBar?.setSuggestions(words)
+    }
+
     // --- Clipboard manager -----------------------------------------------
 
     fun showClipboard() {
@@ -1035,6 +1076,8 @@ class KeyboardView @JvmOverloads constructor(
         fun onMenuAction(action: MenuAction)
         /** Commit a literal string (used for multi-codepoint emoji + clip taps). */
         fun onText(text: String)
+        /** A word was tapped on the suggestion bar. */
+        fun onSuggestionPicked(word: String)
         /** Open the clipboard editor activity for the given existing entry. */
         fun onClipboardEdit(text: String)
         /** Open this app's system "App info" page so the user can grant

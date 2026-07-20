@@ -270,6 +270,22 @@ class SettingsActivity : AppCompatActivity() {
                 else -> KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS
             }
         }
+
+        // Autocorrect: Off / Suggest (passive bar) / Auto (replace on Space).
+        val autocorrectChecked = when (prefs.autocorrectMode) {
+            KeyboardPrefs.AUTOCORRECT_OFF -> R.id.autocorrectOff
+            KeyboardPrefs.AUTOCORRECT_AUTO -> R.id.autocorrectAuto
+            else -> R.id.autocorrectSuggest
+        }
+        binding.autocorrectGroup.check(autocorrectChecked)
+        binding.autocorrectGroup.addOnButtonCheckedListener { _, id, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            prefs.autocorrectMode = when (id) {
+                R.id.autocorrectOff -> KeyboardPrefs.AUTOCORRECT_OFF
+                R.id.autocorrectAuto -> KeyboardPrefs.AUTOCORRECT_AUTO
+                else -> KeyboardPrefs.AUTOCORRECT_SUGGEST
+            }
+        }
     }
 
     private fun sensitivityToProgress(v: Float): Int =

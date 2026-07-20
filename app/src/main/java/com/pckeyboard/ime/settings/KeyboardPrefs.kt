@@ -173,6 +173,20 @@ class KeyboardPrefs(context: Context) {
             prefs.edit().putFloat(KEY_TRACKPAD_SENS, value.coerceIn(0.3f, 3.0f)).apply()
         }
 
+    /**
+     * Autocorrect behaviour:
+     *  - [AUTOCORRECT_OFF]     — no suggestion bar, no corrections.
+     *  - [AUTOCORRECT_SUGGEST] — (default) passive suggestion bar above
+     *                            the keys; nothing is ever changed
+     *                            without a tap.
+     *  - [AUTOCORRECT_AUTO]    — suggestions plus conservative automatic
+     *                            replacement on word commit, undoable
+     *                            with an immediate Backspace.
+     */
+    var autocorrectMode: String
+        get() = prefs.getString(KEY_AUTOCORRECT, AUTOCORRECT_SUGGEST) ?: AUTOCORRECT_SUGGEST
+        set(value) { prefs.edit().putString(KEY_AUTOCORRECT, value).apply() }
+
     /** The keyboard's currently selected language pack id, e.g. "en_US". */
     var currentLanguage: String
         get() = prefs.getString(KEY_LANG, "en_US") ?: "en_US"
@@ -224,6 +238,11 @@ class KeyboardPrefs(context: Context) {
         const val RIGHT_OF_SPACE_SYMBOLS = "symbols"
         const val RIGHT_OF_SPACE_EMOJI = "emoji"
         const val RIGHT_OF_SPACE_ALT = "alt"
+
+        private const val KEY_AUTOCORRECT = "kb_autocorrect_mode"
+        const val AUTOCORRECT_OFF = "off"
+        const val AUTOCORRECT_SUGGEST = "suggest"
+        const val AUTOCORRECT_AUTO = "auto"
 
         /** Threshold above which split mode is applied. */
         const val SPLIT_MIN_WIDTH_DP = 600
