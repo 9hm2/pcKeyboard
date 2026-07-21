@@ -46,7 +46,9 @@ class SuggestionEngineHungarianTest {
         }
     }
 
-    private fun auto(typed: String): String? = engine.suggest(typed).autoReplace
+    // Auto-correct decisions happen at word boundaries — deep calls.
+    private fun auto(typed: String): String? =
+        engine.suggest(typed, deep = true).autoReplace
 
     @Test
     fun singleTypoCorrections() {
@@ -82,6 +84,24 @@ class SuggestionEngineHungarianTest {
     @Test
     fun reverseAccentFix() {
         assertEquals("mindig", auto("mindíg"))
+    }
+
+    @Test
+    fun firstLetterTypoStillCompletes() {
+        // Typing "havít…" when "javít…" was meant: exact-prefix
+        // completion finds nothing, the typo-tolerant fallback must.
+        val result = engine.suggest("havít")
+        org.junit.Assert.assertTrue(
+            "expected a javít- completion, got ${result.suggestions}",
+            result.suggestions.any { it.startsWith("javít") }
+        )
+    }
+
+    @Test
+    fun firstLetterTypoInTwoTypoWord() {
+        // h→j (adjacent) + s→a (adjacent): first char wrong AND another
+        // slip — needs the relaxed first-char rule in the edit-2 scan.
+        assertEquals("javítani", auto("hsvítani"))
     }
 
     @Test

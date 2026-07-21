@@ -135,19 +135,30 @@ class SuggestionEngine(
                 offer(word, score)
             }
             // Two-typo words ("teljrsem", "krllrne", "afjom") have no
-            // edit-1 neighbour at all — scan the top of the dictionary
-            // for distance-2 matches when the cheap pass came up (near)
-            // empty. Bounded and banded, a couple of ms at worst.
+            // edit-1 neighbour at all — scan the dictionary for
+            // distance-2 matches when the cheap pass came up (near)
+            // empty. Word boundaries only: mid-word, a two-edit
+            // whole-word "fix" of a prefix is junk ("havít…" is not a
+            // typo of "hát"), and completions should own the strip.
             val bestEdit1 = edit1.minOfOrNull { it.second } ?: Int.MAX_VALUE
-            if (lower.length >= MIN_EDIT2_LENGTH && bestEdit1 > EDIT2_TRIGGER_SCORE) {
+            if (deep && lower.length >= MIN_EDIT2_LENGTH && bestEdit1 > EDIT2_TRIGGER_SCORE) {
                 for ((word, score) in editDistance2Scan(lower)) {
                     offer(word, score)
                 }
             }
         }
 
-        for (completion in dict.topCompletions(lower, maxSuggestions)) {
+        val completions = dict.topCompletions(lower, maxSuggestions)
+        for (completion in completions) {
             offer(completion, dict.rankOf(completion) * COMPLETION_PENALTY)
+        }
+        // Exact-prefix completion dies when the typo sits in the first
+        // letters of a word still being typed ("havít…") — fall back to
+        // typo-tolerant prefix matching, weighted more cautiously.
+        if (completions.isEmpty() && !typedTrusted && lower.length >= 3) {
+            for (completion in dict.fuzzyCompletions(lower, maxSuggestions)) {
+                offer(completion, dict.rankOf(completion) * FUZZY_COMPLETION_PENALTY)
+            }
         }
 
         // The user's own words complete too — scored by personal use
@@ -339,7 +350,11 @@ class SuggestionEngine(
         val limit = minOf(EDIT2_SCAN_CAP, dict.size)
         for (rank in 0 until limit) {
             val candSkeleton = dict.skeletonAt(rank)
-            if (candSkeleton.isEmpty() || candSkeleton[0] != first) continue
+            if (candSkeleton.isEmpty()) continue
+            // First char may differ — but only by a plausible slip
+            // (neighbouring key / accent sibling), otherwise the scan
+            // cost explodes and the matches are junk anyway.
+            if (candSkeleton[0] != first && !isNearMiss(word[0], candSkeleton[0])) continue
             if (kotlin.math.abs(candSkeleton.length - skeleton.length) > 2) continue
             val d = boundedEditDistance(skeleton, candSkeleton, 2)
             if (d == 2) {
@@ -522,6 +537,8 @@ class SuggestionEngine(
         /** Completions are the least certain source: their rank is
          *  multiplied by this. */
         private const val COMPLETION_PENALTY = 2
+        /** Typo-tolerant completions are more uncertain still. */
+        private const val FUZZY_COMPLETION_PENALTY = 4
         /** Reaching a word through an edit AND the accent map is a
          *  little less certain than either alone. */
         private const val ACCENT_VARIANT_PENALTY = 1.2f
@@ -590,8 +607,11 @@ class SuggestionEngine(
          *  auto-replace on its own authority. */
         private const val PERSONAL_PAIR_AUTO_MIN = 2
         /** The morphological fallback only runs when no fast-source
-         *  candidate scored better than this. */
-        private const val MORPH_TRIGGER_SCORE = 8_000
+         *  candidate scored better than this — i.e. the fast sources
+         *  came up empty or with junk. A decent fast answer must not be
+         *  second-guessed by unranked morph siblings, which used to
+         *  create fake ties that blocked good corrections. */
+        private const val MORPH_TRIGGER_SCORE = 100_000
         /** At most this many Hunspell suggestions are considered. */
         private const val MORPH_MAX_CANDIDATES = 5
         /** Effective score for a morph candidate the corpus has no rank

@@ -103,8 +103,76 @@ class WordDictionary private constructor(
         return out
     }
 
+    /**
+     * Typo-tolerant completions: words continuing a prefix that is
+     * within ONE slip of what was typed (one substitution, one adjacent
+     * swap, one extra or one missing character — first letter
+     * included). This is what keeps the strip alive when the typo is in
+     * the first letters of a word still being typed ("havít…" →
+     * "javítani"): exact-prefix completion finds nothing there.
+     */
+    fun fuzzyCompletions(prefix: String, n: Int, maxRank: Int = FUZZY_SCAN_CAP): List<String> {
+        if (prefix.length < 3 || n <= 0) return emptyList()
+        val p = deaccent(prefix)
+        val out = ArrayList<String>(n)
+        val limit = minOf(maxRank, words.size)
+        for (rank in 0 until limit) {
+            val sk = skeletons[rank]
+            if (sk.length <= p.length) continue
+            if (prefixWithinOneSlip(p, sk)) {
+                out.add(words[rank])
+                if (out.size == n) break
+            }
+        }
+        return out
+    }
+
+    /** True when the first |p| region of [sk] equals [p] up to one slip
+     *  (substitution, adjacent swap, one inserted or one skipped char). */
+    private fun prefixWithinOneSlip(p: String, sk: String): Boolean {
+        // Same-length window: at most one substitution or one adjacent swap.
+        var mismatches = 0
+        var i = 0
+        while (i < p.length) {
+            if (p[i] != sk[i]) {
+                if (mismatches == 0 && i + 1 < p.length &&
+                    p[i] == sk[i + 1] && p[i + 1] == sk[i]
+                ) {
+                    mismatches++          // adjacent swap consumes both positions
+                    i += 2
+                    continue
+                }
+                mismatches++
+                if (mismatches > 1) break
+            }
+            i++
+        }
+        if (mismatches <= 1) return true
+        // One char typed extra: dropping one char of p leaves a prefix of sk.
+        if (dropOneMatches(p, sk)) return true
+        // One char omitted: p matches sk's slightly longer prefix minus one char.
+        return dropOneMatches(sk.substring(0, minOf(sk.length, p.length + 1)), p)
+    }
+
+    /** Walk [longer] against [other] allowing exactly one skipped char in
+     *  [longer]; true when [longer] is consumed (or [other] runs out). */
+    private fun dropOneMatches(longer: String, other: CharSequence): Boolean {
+        var i = 0
+        var j = 0
+        var skipped = false
+        while (i < longer.length && j < other.length) {
+            if (longer[i] == other[j]) { i++; j++ }
+            else {
+                if (skipped) return false
+                skipped = true; i++
+            }
+        }
+        return true
+    }
+
     companion object {
         private const val COMPLETION_SCAN_CAP = 120_000
+        private const val FUZZY_SCAN_CAP = 60_000
 
         /** Loads `assets/dict/<langId>.dict` (gzip-compressed word list —
          *  the neutral extension matters: aapt2 transparently *decompresses
