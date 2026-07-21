@@ -43,7 +43,10 @@ class SuggestionEngine(
     /** Neural char-LM scorer: (context, candidate) -> avg log-prob per
      *  char, or null on failure. Only consulted on deep (word-boundary)
      *  calls. Null until a trained model ships in assets/reranker/. */
-    private val reranker: ((String, String) -> Double?)? = null
+    private val reranker: ((String, String) -> Double?)? = null,
+    /** The user's personal typo model: remembered typed->meant pairs
+     *  and per-slip statistics learned from suggestion taps. */
+    private val personal: PersonalSignals? = null
 ) {
 
     data class Result(
@@ -147,6 +150,14 @@ class SuggestionEngine(
             offer(word, userScore(count))
         }
 
+        // The personal typo memory: if the user has picked a correction
+        // for exactly this typed word before, it's the strongest
+        // possible signal — every confirmation pushes it further up.
+        val personalFix = if (!typedTrusted) personal?.correctionFor(lower) else null
+        if (personalFix != null && personalFix.first != lower) {
+            offer(personalFix.first, PERSONAL_PAIR_BASE / personalFix.second)
+        }
+
         if (scored.isEmpty()) return EMPTY
         // Context boost: a candidate that actually follows the previous
         // word in real text gets its score divided — this is what breaks
@@ -199,7 +210,10 @@ class SuggestionEngine(
         } else ranked
         val autoReplace =
             if (deaccentFix && lower.length >= MIN_AUTOREPLACE_LENGTH) skeletonWord
-            else pickAutoReplace(lower, typedRank, typedTrusted, accentRank, finalRanked)
+            else pickAutoReplace(
+                lower, typedRank, typedTrusted, accentRank, finalRanked,
+                personalFix
+            )
         return Result(
             suggestions = finalRanked.take(maxSuggestions).map { matchCase(typed, it.key) },
             autoReplace = autoReplace?.let { matchCase(typed, it) }
@@ -242,6 +256,7 @@ class SuggestionEngine(
         }
         val n = word.length
         val sb = StringBuilder(word)
+        fun pf(key: String): Float = personal?.editFactor(key) ?: 1f
         // Probe in ascending-penalty order so when two edit paths produce
         // the same string, the cheaper interpretation wins the seen-set.
         // Adjacent transpositions — the classic fast-typing slip.
@@ -249,29 +264,33 @@ class SuggestionEngine(
             if (word[i] == word[i + 1]) continue
             sb.setLength(0); sb.append(word)
             sb.setCharAt(i, word[i + 1]); sb.setCharAt(i + 1, word[i])
-            probe(sb.toString(), PENALTY_TRANSPOSE)
+            probe(sb.toString(), PENALTY_TRANSPOSE * pf("t:${word[i]}${word[i + 1]}"))
         }
         // Deletions (an extra character slipped in).
         for (i in 0 until n) {
-            probe(StringBuilder(word).deleteCharAt(i).toString(), PENALTY_DELETE)
+            probe(
+                StringBuilder(word).deleteCharAt(i).toString(),
+                PENALTY_DELETE * pf("d:${word[i]}")
+            )
         }
         // Insertions (a character was skipped).
         for (i in 0..n) {
             for (c in dict.alphabet) {
                 sb.setLength(0); sb.append(word)
                 sb.insert(i, c)
-                probe(sb.toString(), PENALTY_INSERT)
+                probe(sb.toString(), PENALTY_INSERT * pf("i:$c"))
             }
         }
         // Substitutions — cheap for neighbouring keys / accent siblings,
-        // expensive for keys from the other side of the keyboard.
+        // expensive for keys from the other side of the keyboard; the
+        // user's own recurring slips get cheaper still.
         for (i in 0 until n) {
             for (c in dict.alphabet) {
                 if (c == word[i]) continue
                 sb.setLength(0); sb.append(word)
                 sb.setCharAt(i, c)
                 val penalty = if (isNearMiss(word[i], c)) PENALTY_SUB_NEAR else PENALTY_SUB_FAR
-                probe(sb.toString(), penalty)
+                probe(sb.toString(), penalty * pf("s:${word[i]}$c"))
             }
         }
         return hits
@@ -321,7 +340,8 @@ class SuggestionEngine(
             ) continue
             mismatches++
             if (mismatches > 2) return PENALTY_EDIT2_LENGTH  // transposition-ish shape
-            penalty *= if (isNearMiss(a, b)) 1.0f else PENALTY_EDIT2_FAR_SUB
+            penalty *= (if (isNearMiss(a, b)) 1.0f else PENALTY_EDIT2_FAR_SUB) *
+                (personal?.editFactor("s:$a$b") ?: 1f)
         }
         return penalty
     }
@@ -376,11 +396,18 @@ class SuggestionEngine(
         typedRank: Int,
         typedTrusted: Boolean,
         accentRank: Int,
-        ranked: List<Map.Entry<String, Int>>
+        ranked: List<Map.Entry<String, Int>>,
+        personalFix: Pair<String, Int>? = null
     ): String? {
         if (typedTrusted) return null                  // the word is fine as typed
         if (lower.length < MIN_AUTOREPLACE_LENGTH) return null
         val best = ranked.firstOrNull() ?: return null
+        // A correction the user has personally confirmed at least twice
+        // for exactly this typed word wins outright — no distance or
+        // frequency gate can know better than the user's own taps.
+        if (personalFix != null && personalFix.second >= PERSONAL_PAIR_AUTO_MIN &&
+            personalFix.first == best.key
+        ) return best.key
         // Typed word sits in the corpus's deep tail — correctable, but
         // only by something MUCH more common than itself.
         val weakKnown = typedRank >= 0
@@ -527,6 +554,12 @@ class SuggestionEngine(
         /** Score base for user-dictionary words: count 2 lands mid-list,
          *  a word typed dozens of times competes with top corpus words. */
         private const val USER_RANK_BASE = 6_000
+        /** Score base for a personally confirmed typo->fix pair: one tap
+         *  puts it near the top, repeats pin it there. */
+        private const val PERSONAL_PAIR_BASE = 600
+        /** Confirmation taps needed before a personal pair may
+         *  auto-replace on its own authority. */
+        private const val PERSONAL_PAIR_AUTO_MIN = 2
         /** Corpus rank below which a candidate is trusted without asking
          *  the validator (common words incl. colloquialisms Hunspell may
          *  not know — "tesó"). */

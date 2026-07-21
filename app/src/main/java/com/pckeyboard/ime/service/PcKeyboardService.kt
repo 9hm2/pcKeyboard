@@ -17,6 +17,7 @@ import com.pckeyboard.ime.clipboard.ClipboardHistory
 import com.pckeyboard.ime.dictionary.BigramStore
 import com.pckeyboard.ime.dictionary.DictionaryStore
 import com.pckeyboard.ime.dictionary.HunspellStore
+import com.pckeyboard.ime.dictionary.PersonalErrorModel
 import com.pckeyboard.ime.dictionary.RerankerStore
 import com.pckeyboard.ime.dictionary.SuggestionEngine
 import com.pckeyboard.ime.dictionary.TrigramStore
@@ -86,9 +87,14 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var lastEventWasTyping = false
     /** Lazily-created per-language learning dictionaries. */
     private val userDicts = mutableMapOf<String, UserDictionary>()
+    /** Lazily-created per-language personal typo models. */
+    private val personalModels = mutableMapOf<String, PersonalErrorModel>()
 
     private fun userDict(): UserDictionary =
         userDicts.getOrPut(currentLayoutId) { UserDictionary(this, currentLayoutId) }
+
+    private fun personalModel(): PersonalErrorModel =
+        personalModels.getOrPut(currentLayoutId) { PersonalErrorModel(this, currentLayoutId) }
 
     // When the keyboard is opened by a co-operating terminal (NeoTerm) it
     // advertises its colours through EditorInfo.extras; we derive a theme from
@@ -671,7 +677,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             HunspellStore.validatorFor(currentLayoutId),
             BigramStore.peek(currentLayoutId),
             TrigramStore.peek(currentLayoutId),
-            RerankerStore.scorerFor(currentLayoutId)
+            RerankerStore.scorerFor(currentLayoutId),
+            personalModel()
         )
 
     /**
@@ -892,6 +899,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         pendingInsist = null
         autocorrectVetoes.add(lower)
         userDict().forceLearn(lower)
+        // Whatever correction pair we learned for this word is wrong.
+        personalModel().forget(lower)
         return true
     }
 
@@ -1131,7 +1140,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     /** Suggestion-bar tap: replace the word being typed with the picked
-     *  candidate and move on with a trailing space. */
+     *  candidate and move on with a trailing space. Every tap is also a
+     *  labelled example "typed -> meant" for the personal typo model. */
     override fun onSuggestionPicked(word: String) {
         val ic = currentInputConnection ?: return
         pendingInsist = null
@@ -1141,6 +1151,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (current.isNotEmpty()) ic.deleteSurroundingText(current.length, 0)
         ic.commitText("$word ", 1)
         ic.endBatchEdit()
+        if (current.isNotEmpty() && !current.equals(word, ignoreCase = true)) {
+            personalModel().recordCorrection(current, word)
+        }
         keyboardView?.setSuggestions(emptyList())
     }
 
