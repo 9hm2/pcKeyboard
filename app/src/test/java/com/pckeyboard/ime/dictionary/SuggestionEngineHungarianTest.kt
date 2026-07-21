@@ -21,11 +21,13 @@ class SuggestionEngineHungarianTest {
 
     companion object {
         private lateinit var engine: SuggestionEngine
+        lateinit var engineDict: WordDictionary
+        lateinit var engineValidator: (String) -> Boolean
 
         @BeforeClass
         @JvmStatic
         fun setUp() {
-            val dict = FileInputStream(File("src/main/assets/dict/hu_HU.dict")).use {
+            engineDict = FileInputStream(File("src/main/assets/dict/hu_HU.dict")).use {
                 WordDictionary.fromGzipStream("hu_HU", it)
             }!!
             val hunspellDir = File("src/main/assets/hunspell")
@@ -34,11 +36,12 @@ class SuggestionEngineHungarianTest {
                     Hunspell(HunspellDictionary(ByteBuffersDirectory(), "hu_HU", aff, dic))
                 }
             }
+            engineValidator = { w ->
+                try { checker.spell(w) } catch (_: Throwable) { true }
+            }
             engine = SuggestionEngine(
-                dict, null,
-                validator = { w ->
-                    try { checker.spell(w) } catch (_: Throwable) { true }
-                },
+                engineDict, null,
+                validator = engineValidator,
                 morphSuggester = { w ->
                     try { checker.suggest(w) } catch (_: Throwable) { emptyList() }
                 }
@@ -114,6 +117,23 @@ class SuggestionEngineHungarianTest {
             "expected morph suggestion, got ${result.suggestions}",
             result.suggestions.contains("gondolkodhattam")
         )
+    }
+
+    @Test
+    fun foreignWordsAreProtectedByCrossLanguageTrust() {
+        // Bilingual typing: an English word typed while the Hungarian
+        // layout is active must never be corrected into Hungarian when
+        // another enabled language vouches for it.
+        val english = setOf("keyboard", "awesome", "downloading")
+        val bilingual = SuggestionEngine(
+            engineDict, null,
+            validator = engineValidator,
+            foreignTrust = { w -> w.lowercase() in english }
+        )
+        for (w in english) {
+            assertNull("should trust foreign word $w",
+                bilingual.suggest(w, deep = true).autoReplace)
+        }
     }
 
     @Test

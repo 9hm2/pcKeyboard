@@ -52,7 +52,15 @@ class SuggestionEngine(
      *  form the affix rules can build ("gondolkodhattam"). Consulted
      *  only on deep calls and only when the fast sources came up weak
      *  — its internal time budget makes it too slow per keystroke. */
-    private val morphSuggester: ((String) -> List<String>)? = null
+    private val morphSuggester: ((String) -> List<String>)? = null,
+    /** Cross-language trust: true when ANOTHER enabled language knows
+     *  this word. Bilingual typing (the Samsung behaviour): an English
+     *  word typed while the Hungarian layout is active must never be
+     *  "corrected" into Hungarian. */
+    private val foreignTrust: ((String) -> Boolean)? = null,
+    /** The user's own word-pair habits — context boost stronger than
+     *  the corpus models, because it's literally how this user writes. */
+    private val personalBigrams: PersonalBigramSignals? = null
 ) {
 
     data class Result(
@@ -94,7 +102,8 @@ class SuggestionEngine(
         } == true
         val typedTrusted = typedValidWord ||
             (typedRank in 0 until WEAK_TYPED_RANK) ||
-            user?.isKnown(lower) == true
+            user?.isKnown(lower) == true ||
+            foreignTrust?.let { it(typed) || (typed != lower && it(lower)) } == true
 
         // Reverse accent error ("mindíg" → "mindig"): the typed word is
         // morphologically WRONG but its accent-stripped skeleton is a
@@ -202,15 +211,20 @@ class SuggestionEngine(
         // word in real text gets its score divided — this is what breaks
         // ties between otherwise equally plausible corrections in the
         // direction the sentence wants.
-        if (prevRank >= 0 && (bigrams != null || trigrams != null)) {
+        if (prevWord != null &&
+            (bigrams != null || trigrams != null || personalBigrams != null)
+        ) {
             for (entry in scored.entries) {
                 val candRank = dict.rankOf(entry.key)
-                val c2 = bigrams?.count(prevRank, candRank) ?: 0
-                val c3 = trigrams?.count(prev2Rank, prevRank, candRank) ?: 0
-                if (c2 > 0 || c3 > 0) {
+                val c2 = if (prevRank >= 0) bigrams?.count(prevRank, candRank) ?: 0 else 0
+                val c3 = if (prevRank >= 0)
+                    trigrams?.count(prev2Rank, prevRank, candRank) ?: 0 else 0
+                val cp = personalBigrams?.count(prevWord, entry.key) ?: 0
+                if (c2 > 0 || c3 > 0 || cp > 0) {
                     val divisor = 1.0 +
                         kotlin.math.ln(1.0 + c2) * BIGRAM_BOOST +
-                        kotlin.math.ln(1.0 + c3) * TRIGRAM_BOOST
+                        kotlin.math.ln(1.0 + c3) * TRIGRAM_BOOST +
+                        kotlin.math.ln(1.0 + cp) * PERSONAL_BIGRAM_BOOST
                     entry.setValue((entry.value / divisor).toInt())
                 }
             }
@@ -632,6 +646,8 @@ class SuggestionEngine(
         private const val BIGRAM_BOOST = 2.0
         /** Trigram context is sharper than bigram — boost accordingly. */
         private const val TRIGRAM_BOOST = 3.0
+        /** The user's own pairs beat corpus statistics. */
+        private const val PERSONAL_BIGRAM_BOOST = 4.0
         /** How many top candidates the neural reranker scores per
          *  boundary. */
         private const val RERANK_CANDIDATE_LIMIT = 6

@@ -17,6 +17,7 @@ import com.pckeyboard.ime.clipboard.ClipboardHistory
 import com.pckeyboard.ime.dictionary.BigramStore
 import com.pckeyboard.ime.dictionary.DictionaryStore
 import com.pckeyboard.ime.dictionary.HunspellStore
+import com.pckeyboard.ime.dictionary.PersonalBigrams
 import com.pckeyboard.ime.dictionary.PersonalErrorModel
 import com.pckeyboard.ime.dictionary.RerankerStore
 import com.pckeyboard.ime.dictionary.SuggestionEngine
@@ -89,12 +90,36 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private val userDicts = mutableMapOf<String, UserDictionary>()
     /** Lazily-created per-language personal typo models. */
     private val personalModels = mutableMapOf<String, PersonalErrorModel>()
+    /** Lazily-created per-language personal word-pair memories. */
+    private val personalBigramStores = mutableMapOf<String, PersonalBigrams>()
+    /** Set right after an auto-correction: (original, replacement,
+     *  boundary). The strip shows the original as the first chip so one
+     *  tap reverts the correction; cleared by the next key. */
+    private var pendingRevert: Triple<String, String, String>? = null
 
     private fun userDict(): UserDictionary =
         userDicts.getOrPut(currentLayoutId) { UserDictionary(this, currentLayoutId) }
 
     private fun personalModel(): PersonalErrorModel =
         personalModels.getOrPut(currentLayoutId) { PersonalErrorModel(this, currentLayoutId) }
+
+    private fun personalBigrams(): PersonalBigrams =
+        personalBigramStores.getOrPut(currentLayoutId) { PersonalBigrams(this, currentLayoutId) }
+
+    /** True when ANOTHER enabled language recognises [word] — bilingual
+     *  typing must never mangle a valid foreign word into the active
+     *  language. Consults whatever is already loaded (fail-open). */
+    private fun foreignLanguageKnows(word: String): Boolean {
+        for (lang in kbPrefs.enabledLanguages) {
+            if (lang == currentLayoutId) continue
+            val dict = DictionaryStore.peek(lang)
+            val rank = dict?.rankOf(word.lowercase()) ?: -1
+            if (rank in 0 until FOREIGN_TRUST_RANK) return true
+            val valid = HunspellStore.validatorFor(lang)?.invoke(word)
+            if (valid == true) return true
+        }
+        return false
+    }
 
     // When the keyboard is opened by a co-operating terminal (NeoTerm) it
     // advertises its colours through EditorInfo.extras; we derive a theme from
@@ -247,6 +272,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         /** How many next-word predictions the strip shows after a
          *  completed word. */
         private const val PREDICTION_COUNT = 5
+        /** Corpus rank below which the OTHER language's dictionary
+         *  vouches for a word (bilingual trust). */
+        private const val FOREIGN_TRUST_RANK = 10_000
     }
 
     override fun onCreateInputView(): View {
@@ -430,6 +458,14 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             BigramStore.preload(this, currentLayoutId)
             TrigramStore.preload(this, currentLayoutId)
             RerankerStore.preload(this, currentLayoutId)
+            // Bilingual trust needs the OTHER enabled language's word
+            // knowledge in memory too (the store LRUs hold two).
+            for (lang in kbPrefs.enabledLanguages) {
+                if (lang != currentLayoutId) {
+                    DictionaryStore.preload(this, lang)
+                    HunspellStore.preload(this, lang)
+                }
+            }
         }
     }
 
@@ -632,7 +668,14 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         }
         val (word, prevWord, prev2Word) = currentWordWithContext()
         if (word.isEmpty()) {
-            keyboardView?.setSuggestions(predictNext(dict, prevWord, prev2Word))
+            // Right after an auto-correction the original leads the
+            // strip — one tap takes it back (the Samsung affordance).
+            val revert = pendingRevert
+            val predictions = predictNext(dict, prevWord, prev2Word)
+            keyboardView?.setSuggestions(
+                if (revert != null) (listOf(revert.first) + predictions).distinct()
+                else predictions
+            )
             return
         }
         keyboardView?.setSuggestions(
@@ -656,6 +699,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (prevRank < 0) return emptyList()
         val prev2Rank = prev2Word?.lowercase()?.let { dict.rankOf(it) } ?: -1
         val out = LinkedHashSet<String>()
+        personalBigrams().topNext(prevWord, PREDICTION_COUNT)
+            .forEach { out.add(it) }
         TrigramStore.peek(currentLayoutId)?.let { tri ->
             if (prev2Rank >= 0) {
                 tri.topNext(prev2Rank, prevRank, PREDICTION_COUNT)
@@ -679,7 +724,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             TrigramStore.peek(currentLayoutId),
             RerankerStore.scorerFor(currentLayoutId),
             personalModel(),
-            HunspellStore.suggesterFor(currentLayoutId)
+            HunspellStore.suggesterFor(currentLayoutId),
+            foreignTrust = { w -> foreignLanguageKnows(w) },
+            personalBigrams = personalBigrams()
         )
 
     /**
@@ -692,9 +739,16 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private fun learnCurrentWord() {
         if (!suggestionsActive()) return
         val dict = DictionaryStore.peek(currentLayoutId) ?: return
-        val word = currentWord()
+        val (word, prevWord, _) = currentWordWithContext()
         // Committing a different word closes the retype-to-keep window.
         if (word.isNotEmpty() && word.lowercase() != pendingInsist) pendingInsist = null
+        // Personal word-pair memory: every committed pair teaches the
+        // prediction/context layer how THIS user chains words.
+        if (word.isNotEmpty() && prevWord != null &&
+            word.all { isWordChar(it) }
+        ) {
+            personalBigrams().record(prevWord, word)
+        }
         if (word.length < 2 || word.length > 32) return
         val lower = word.lowercase()
         if (lower.any { !isWordChar(it) }) return
@@ -883,6 +937,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         ic.commitText(replacement + boundary, 1)
         ic.endBatchEdit()
         pendingInsist = word.lowercase()
+        pendingRevert = Triple(word, replacement, boundary)
         return true
     }
 
@@ -1145,6 +1200,27 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      *  labelled example "typed -> meant" for the personal typo model. */
     override fun onSuggestionPicked(word: String) {
         val ic = currentInputConnection ?: return
+        // Revert chip: restore what the user actually typed, veto and
+        // learn it — same semantics as the retype-to-keep flow.
+        val revert = pendingRevert
+        if (revert != null && word.equals(revert.first, ignoreCase = true)) {
+            pendingRevert = null
+            pendingInsist = null
+            val expect = revert.second + revert.third
+            val actual = ic.getTextBeforeCursor(expect.length, 0)?.toString()
+            if (actual == expect) {
+                ic.beginBatchEdit()
+                ic.deleteSurroundingText(expect.length, 0)
+                ic.commitText(revert.first + revert.third, 1)
+                ic.endBatchEdit()
+                autocorrectVetoes.add(revert.first.lowercase())
+                userDict().forceLearn(revert.first.lowercase())
+                personalModel().forget(revert.first.lowercase())
+                keyboardView?.setSuggestions(emptyList())
+                return
+            }
+        }
+        pendingRevert = null
         pendingInsist = null
         lastEventWasTyping = false
         val current = currentWord()
