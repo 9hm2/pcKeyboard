@@ -34,9 +34,15 @@ class SuggestionEngineHungarianTest {
                     Hunspell(HunspellDictionary(ByteBuffersDirectory(), "hu_HU", aff, dic))
                 }
             }
-            engine = SuggestionEngine(dict, null, validator = { w ->
-                try { checker.spell(w) } catch (_: Throwable) { true }
-            })
+            engine = SuggestionEngine(
+                dict, null,
+                validator = { w ->
+                    try { checker.spell(w) } catch (_: Throwable) { true }
+                },
+                morphSuggester = { w ->
+                    try { checker.suggest(w) } catch (_: Throwable) { emptyList() }
+                }
+            )
         }
     }
 
@@ -76,6 +82,18 @@ class SuggestionEngineHungarianTest {
     @Test
     fun reverseAccentFix() {
         assertEquals("mindig", auto("mindíg"))
+    }
+
+    @Test
+    fun morphFallbackReachesWordsTheCorpusNeverSaw() {
+        // "gondolkodhattam" is NOT in the 400k corpus list (verified),
+        // so no fast source can propose it — only Hunspell's generator
+        // can, from stems + affix rules. Deep call, like a word commit.
+        val result = engine.suggest("gondolkodhsttam", deep = true)
+        org.junit.Assert.assertTrue(
+            "expected morph suggestion, got ${result.suggestions}",
+            result.suggestions.contains("gondolkodhattam")
+        )
     }
 
     @Test

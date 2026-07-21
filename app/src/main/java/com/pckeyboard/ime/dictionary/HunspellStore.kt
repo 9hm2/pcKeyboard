@@ -60,6 +60,22 @@ object HunspellStore {
         }
     }
 
+    /** A morphological suggestion generator, or null while unloaded.
+     *  Unlike the corpus list, this reaches EVERY inflection/compound
+     *  the affix rules can build — it's the engine's fallback when its
+     *  own candidate sources come up empty. Bounded internally by
+     *  Lucene's suggestion time budget; failures yield an empty list. */
+    fun suggesterFor(langId: String): ((String) -> List<String>)? {
+        val checker = loaded[langId] ?: return null
+        return { word ->
+            try {
+                checker.suggest(word)
+            } catch (_: Throwable) {
+                emptyList()
+            }
+        }
+    }
+
     /** Ensures the checker for [langId] is loaded or loading. Languages
      *  that failed once are not retried for the life of the process. */
     fun preload(context: Context, langId: String) {

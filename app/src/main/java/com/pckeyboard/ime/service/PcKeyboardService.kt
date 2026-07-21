@@ -678,7 +678,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             BigramStore.peek(currentLayoutId),
             TrigramStore.peek(currentLayoutId),
             RerankerStore.scorerFor(currentLayoutId),
-            personalModel()
+            personalModel(),
+            HunspellStore.suggesterFor(currentLayoutId)
         )
 
     /**

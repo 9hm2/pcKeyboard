@@ -46,7 +46,13 @@ class SuggestionEngine(
     private val reranker: ((String, String) -> Double?)? = null,
     /** The user's personal typo model: remembered typed->meant pairs
      *  and per-slip statistics learned from suggestion taps. */
-    private val personal: PersonalSignals? = null
+    private val personal: PersonalSignals? = null,
+    /** Hunspell's morphological suggestion generator. The corpus list
+     *  can only propose words somebody once wrote; this reaches every
+     *  form the affix rules can build ("gondolkodhattam"). Consulted
+     *  only on deep calls and only when the fast sources came up weak
+     *  — its internal time budget makes it too slow per keystroke. */
+    private val morphSuggester: ((String) -> List<String>)? = null
 ) {
 
     data class Result(
@@ -156,6 +162,28 @@ class SuggestionEngine(
         val personalFix = if (!typedTrusted) personal?.correctionFor(lower) else null
         if (personalFix != null && personalFix.first != lower) {
             offer(personalFix.first, PERSONAL_PAIR_BASE / personalFix.second)
+        }
+
+        // Morphological fallback: when the fast sources found nothing
+        // convincing for a wrong word, ask Hunspell to GENERATE fixes
+        // from stems + affix rules — the only source that reaches words
+        // the corpus never saw. Scored by corpus rank when available,
+        // by a flat "rare but real" score otherwise, degraded by edit
+        // distance from what was typed.
+        if (deep && morphSuggester != null && !typedTrusted &&
+            lower.length >= MIN_AUTOREPLACE_LENGTH &&
+            (scored.values.minOrNull() ?: Int.MAX_VALUE) > MORPH_TRIGGER_SCORE
+        ) {
+            val skeleton = WordDictionary.deaccent(lower)
+            for (raw in morphSuggester.invoke(lower).take(MORPH_MAX_CANDIDATES)) {
+                val cand = raw.lowercase()
+                if (cand == lower || cand.any { !it.isLetter() && it != '\'' }) continue
+                val d = boundedEditDistance(skeleton, WordDictionary.deaccent(cand), 3)
+                if (d > 3) continue
+                val rank = dict.rankOf(cand)
+                val base = if (rank >= 0) rank else MORPH_UNRANKED_SCORE
+                offer(cand, (base * (1.0 + MORPH_DISTANCE_PENALTY * (d - 1))).toInt())
+            }
         }
 
         if (scored.isEmpty()) return EMPTY
@@ -512,9 +540,10 @@ class SuggestionEngine(
          *  slip. Also gates the distance-2 dictionary scan. */
         private const val MIN_EDIT2_LENGTH = 5
         /** How deep the distance-2 scan looks into the rank-ordered
-         *  dictionary — matches the long-word auto-replace cap so any
-         *  correction the picker may approve is actually findable. */
-        private const val EDIT2_SCAN_CAP = 150_000
+         *  dictionary — the full list: the first-char and length
+         *  filters cut ~97% of rows before any distance is computed,
+         *  so even the whole 400k stays a few ms. */
+        private const val EDIT2_SCAN_CAP = 400_000
         /** Base penalty for a same-length double-substitution fix. */
         private const val PENALTY_EDIT2 = 1.4f
         /** Extra multiplier per far-key substitution in a distance-2 fix. */
@@ -560,6 +589,16 @@ class SuggestionEngine(
         /** Confirmation taps needed before a personal pair may
          *  auto-replace on its own authority. */
         private const val PERSONAL_PAIR_AUTO_MIN = 2
+        /** The morphological fallback only runs when no fast-source
+         *  candidate scored better than this. */
+        private const val MORPH_TRIGGER_SCORE = 8_000
+        /** At most this many Hunspell suggestions are considered. */
+        private const val MORPH_MAX_CANDIDATES = 5
+        /** Effective score for a morph candidate the corpus has no rank
+         *  for — "rare but real". */
+        private const val MORPH_UNRANKED_SCORE = 40_000
+        /** Score multiplier growth per extra edit of distance. */
+        private const val MORPH_DISTANCE_PENALTY = 0.6
         /** Corpus rank below which a candidate is trusted without asking
          *  the validator (common words incl. colloquialisms Hunspell may
          *  not know — "tesó"). */
