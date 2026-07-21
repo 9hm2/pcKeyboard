@@ -714,6 +714,9 @@ class KeyboardView @JvmOverloads constructor(
      *  while there is actual content to show. */
     private var suggestionBarEnabled = false
 
+    /** Pending delayed collapse of an empty strip. */
+    private var suggestionBarUnmountRunnable: Runnable? = null
+
     /** Sets the per-editor gate. Called on every input session start. */
     fun setSuggestionBarVisible(visible: Boolean) {
         suggestionBarEnabled = visible
@@ -721,16 +724,32 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     /**
-     * Updates the strip content. An empty list unmounts the bar
-     * entirely — no candidates means no strip, the keys get the space
-     * back; the first non-empty list mounts it again (with the current
-     * theme, so theme changes are picked up naturally).
+     * Updates the strip content. The strip mounts on the first
+     * non-empty list; an empty list only BLANKS it (nothing stale left
+     * tappable) and schedules the actual collapse after a short lull —
+     * word boundaries and thinking pauses constantly produce brief
+     * empty moments, and unmounting on each one made the whole
+     * keyboard bounce up and down while typing. Idle long enough, and
+     * the strip folds away, returning the space to the app.
      */
     fun setSuggestions(words: List<String>) {
-        if (!suggestionBarEnabled || words.isEmpty()) {
+        if (!suggestionBarEnabled) {
             unmountSuggestionBar()
             return
         }
+        if (words.isEmpty()) {
+            suggestionBar?.setSuggestions(emptyList())
+            if (suggestionBar != null && suggestionBarUnmountRunnable == null) {
+                val r = Runnable {
+                    suggestionBarUnmountRunnable = null
+                    unmountSuggestionBar()
+                }
+                suggestionBarUnmountRunnable = r
+                handler.postDelayed(r, SUGGESTION_BAR_LINGER_MS)
+            }
+            return
+        }
+        cancelSuggestionBarUnmount()
         if (suggestionBar == null) {
             val theme = theme ?: return
             val bar = SuggestionBarView(context, theme) { word ->
@@ -748,7 +767,13 @@ class KeyboardView @JvmOverloads constructor(
         suggestionBar?.setSuggestions(words)
     }
 
+    private fun cancelSuggestionBarUnmount() {
+        suggestionBarUnmountRunnable?.let { handler.removeCallbacks(it) }
+        suggestionBarUnmountRunnable = null
+    }
+
     private fun unmountSuggestionBar() {
+        cancelSuggestionBarUnmount()
         suggestionBar?.let { mainContainer.removeView(it) }
         if (suggestionBar != null) requestLayout()
         suggestionBar = null
@@ -981,6 +1006,10 @@ class KeyboardView @JvmOverloads constructor(
         const val POPUP_ZONE_DP = 90f
         /** Height of the emoji search overlay header (query + results strip). */
         const val SEARCH_HEADER_DP = 104f
+        /** How long an empty suggestion strip lingers (blank) before it
+         *  collapses — bridges word boundaries and thinking pauses so
+         *  the keyboard doesn't bounce while typing. */
+        const val SUGGESTION_BAR_LINGER_MS = 1500L
         /** Finger pixels per one character of horizontal cursor movement
          *  at sensitivity 1.0. Lower = faster cursor, higher = more
          *  precise. */
