@@ -23,7 +23,10 @@ Usage:
 """
 
 import argparse
+import os
 import random
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -81,9 +84,27 @@ def build_model(vocab, seq_len):
     return model
 
 
-def main():
+def export_tflite(args, chars, vocab):
+    """Runs in a CPU-only process: with a GPU visible, Keras bakes the
+    fused CudnnRNNV3 kernel into the traced graph, which the TFLite
+    converter cannot translate ("op is neither a custom op nor a flex
+    op"). On CPU the GRU traces to portable ops and converts cleanly."""
     import tensorflow as tf
 
+    out = Path(args.out_dir)
+    model = build_model(vocab, args.seq_len)
+    model.load_weights(out / f"reranker_{args.lang}.weights.h5")
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]  # dynamic-range INT8
+    tflite = converter.convert()
+    (out / f"reranker_{args.lang}.tflite").write_bytes(tflite)
+    (out / f"reranker_{args.lang}.chars").write_text(
+        "\n".join(chars), encoding="utf-8")
+    print(f"exported reranker_{args.lang}.tflite "
+          f"({len(tflite) // 1024} KiB) + .chars")
+
+
+def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--lang", required=True, choices=sorted(CHARSETS))
     ap.add_argument("--sentences", required=True)
@@ -92,10 +113,17 @@ def main():
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--limit-sentences", type=int, default=0)
     ap.add_argument("--out-dir", default=".")
+    ap.add_argument("--export-only", action="store_true",
+                    help="internal: convert previously saved weights on CPU")
     args = ap.parse_args()
 
     charmap, chars = build_charmap(args.lang)
     vocab = len(chars) + 2
+
+    if args.export_only:
+        export_tflite(args, chars, vocab)
+        return
+
     data = load_windows(args.sentences, charmap, args.seq_len, args.limit_sentences)
     print(f"{len(data)} training windows, vocab={vocab}")
     x, y = data[:, :-1], data[:, 1:]
@@ -106,14 +134,19 @@ def main():
               validation_split=0.02)
 
     out = Path(args.out_dir)
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]  # dynamic-range INT8
-    tflite = converter.convert()
-    (out / f"reranker_{args.lang}.tflite").write_bytes(tflite)
-    (out / f"reranker_{args.lang}.chars").write_text(
-        "\n".join(chars), encoding="utf-8")
-    print(f"exported reranker_{args.lang}.tflite "
-          f"({len(tflite) // 1024} KiB) + .chars")
+    out.mkdir(parents=True, exist_ok=True)
+    model.save_weights(out / f"reranker_{args.lang}.weights.h5")
+
+    # Re-run ourselves with the GPU hidden for the conversion step —
+    # see export_tflite for why.
+    env = dict(os.environ, CUDA_VISIBLE_DEVICES="-1")
+    subprocess.check_call(
+        [sys.executable, os.path.abspath(__file__),
+         "--lang", args.lang, "--sentences", args.sentences,
+         "--seq-len", str(args.seq_len), "--out-dir", args.out_dir,
+         "--export-only"],
+        env=env,
+    )
 
 
 if __name__ == "__main__":
