@@ -14,9 +14,9 @@ import com.pckeyboard.ime.theme.KeyboardTheme
 /**
  * Suggestion strip pinned between the popup zone and the keyboard rows.
  * Horizontally scrollable: the best candidate sits leftmost (rendered
- * bolder), and swiping the strip reveals the longer tail of variants.
- * Tapping a chip commits it via [onPick]. The bar keeps its height when
- * there are no candidates so the keyboard doesn't jump while typing.
+ * as an accent pill), and swiping the strip reveals the longer tail of
+ * variants. Tapping a chip commits it via [onPick]. KeyboardView only
+ * mounts this while there is content — no candidates, no strip.
  */
 class SuggestionBarView(
     context: Context,

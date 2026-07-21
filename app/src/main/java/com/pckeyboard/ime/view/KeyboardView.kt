@@ -708,37 +708,50 @@ class KeyboardView @JvmOverloads constructor(
 
     // --- Autocorrect suggestion bar ---------------------------------------
 
-    /**
-     * Mounts / unmounts the suggestion strip. The IME service calls this
-     * on every input session start with its per-editor verdict (text
-     * fields yes; passwords, terminals, URL bars no). Remounting picks
-     * up the current theme.
-     */
+    /** Whether this editor is allowed to have a suggestion strip at all
+     *  (the IME service's per-editor verdict: text fields yes;
+     *  passwords, terminals, URL bars no). The strip itself only mounts
+     *  while there is actual content to show. */
+    private var suggestionBarEnabled = false
+
+    /** Sets the per-editor gate. Called on every input session start. */
     fun setSuggestionBarVisible(visible: Boolean) {
-        if (!visible) {
-            suggestionBar?.let { mainContainer.removeView(it) }
-            suggestionBar = null
-            requestLayout()
-            return
-        }
-        val theme = theme ?: return
-        // Recreate so a theme change since last session is applied.
-        suggestionBar?.let { mainContainer.removeView(it) }
-        val bar = SuggestionBarView(context, theme) { word ->
-            listener?.onSuggestionPicked(word)
-        }
-        suggestionBar = bar
-        // Directly above the keyboard rows, below popupZone (and below
-        // the emoji search header if one is up).
-        mainContainer.addView(bar, mainContainer.indexOfChild(rowsContainer),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(SuggestionBarView.BAR_DP)
-            ))
-        requestLayout()
+        suggestionBarEnabled = visible
+        if (!visible) unmountSuggestionBar()
     }
 
+    /**
+     * Updates the strip content. An empty list unmounts the bar
+     * entirely — no candidates means no strip, the keys get the space
+     * back; the first non-empty list mounts it again (with the current
+     * theme, so theme changes are picked up naturally).
+     */
     fun setSuggestions(words: List<String>) {
+        if (!suggestionBarEnabled || words.isEmpty()) {
+            unmountSuggestionBar()
+            return
+        }
+        if (suggestionBar == null) {
+            val theme = theme ?: return
+            val bar = SuggestionBarView(context, theme) { word ->
+                listener?.onSuggestionPicked(word)
+            }
+            suggestionBar = bar
+            // Directly above the keyboard rows, below popupZone (and
+            // below the emoji search header if one is up).
+            mainContainer.addView(bar, mainContainer.indexOfChild(rowsContainer),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(SuggestionBarView.BAR_DP)
+                ))
+            requestLayout()
+        }
         suggestionBar?.setSuggestions(words)
+    }
+
+    private fun unmountSuggestionBar() {
+        suggestionBar?.let { mainContainer.removeView(it) }
+        if (suggestionBar != null) requestLayout()
+        suggestionBar = null
     }
 
     // --- Clipboard manager -----------------------------------------------
