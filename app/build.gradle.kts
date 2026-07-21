@@ -99,6 +99,9 @@ dependencies {
     // Lucene 9) — morphological word validation incl. Hungarian compounds.
     implementation("org.apache.lucene:lucene-core:9.11.1")
     implementation("org.apache.lucene:lucene-analysis-common:9.11.1")
+    // TFLite runtime for the neural reranker. Dormant until model files
+    // appear under assets/reranker/ (see scripts/train_reranker/).
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
 
     testImplementation("junit:junit:4.13.2")
 }

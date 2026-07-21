@@ -36,7 +36,14 @@ class SuggestionEngine(
      *  previous word in real text get boosted, so ties between
      *  corrections resolve the way the sentence wants. Null while
      *  loading — behaves as before. */
-    private val bigrams: BigramModel? = null
+    private val bigrams: BigramModel? = null,
+    /** Word-triple context model — two words of preceding context,
+     *  a much sharper signal where it fires. Null while loading. */
+    private val trigrams: TrigramModel? = null,
+    /** Neural char-LM scorer: (context, candidate) -> avg log-prob per
+     *  char, or null on failure. Only consulted on deep (word-boundary)
+     *  calls. Null until a trained model ships in assets/reranker/. */
+    private val reranker: ((String, String) -> Double?)? = null
 ) {
 
     data class Result(
@@ -49,11 +56,20 @@ class SuggestionEngine(
 
     private val adjacency: Map<Char, String> = adjacencyFor(dict.langId)
 
-    fun suggest(typed: String, maxSuggestions: Int = 3, prevWord: String? = null): Result {
+    fun suggest(
+        typed: String,
+        maxSuggestions: Int = 3,
+        prevWord: String? = null,
+        prev2Word: String? = null,
+        /** True on word-boundary (commit) calls — unlocks the neural
+         *  rerank, which is too slow to run per keystroke. */
+        deep: Boolean = false
+    ): Result {
         if (typed.length < MIN_TYPED_LENGTH) return EMPTY
         val lower = typed.lowercase()
         if (lower.any { !it.isLetter() && it != '\'' }) return EMPTY
         val prevRank = prevWord?.lowercase()?.let { dict.rankOf(it) } ?: -1
+        val prev2Rank = prev2Word?.lowercase()?.let { dict.rankOf(it) } ?: -1
 
         val typedRank = dict.rankOf(lower)
         // "Trusted" = the user's word stands: a genuinely common corpus
@@ -136,14 +152,16 @@ class SuggestionEngine(
         // word in real text gets its score divided — this is what breaks
         // ties between otherwise equally plausible corrections in the
         // direction the sentence wants.
-        if (bigrams != null && prevRank >= 0) {
+        if (prevRank >= 0 && (bigrams != null || trigrams != null)) {
             for (entry in scored.entries) {
-                val c = bigrams.count(prevRank, dict.rankOf(entry.key))
-                if (c > 0) {
-                    entry.setValue(
-                        (entry.value /
-                            (1.0 + kotlin.math.ln(1.0 + c) * BIGRAM_BOOST)).toInt()
-                    )
+                val candRank = dict.rankOf(entry.key)
+                val c2 = bigrams?.count(prevRank, candRank) ?: 0
+                val c3 = trigrams?.count(prev2Rank, prevRank, candRank) ?: 0
+                if (c2 > 0 || c3 > 0) {
+                    val divisor = 1.0 +
+                        kotlin.math.ln(1.0 + c2) * BIGRAM_BOOST +
+                        kotlin.math.ln(1.0 + c3) * TRIGRAM_BOOST
+                    entry.setValue((entry.value / divisor).toInt())
                 }
             }
         }
@@ -156,11 +174,34 @@ class SuggestionEngine(
             .filter { candidateAcceptable(it.key) }
 
         if (ranked.isEmpty()) return EMPTY
+        // Neural rerank (word boundaries only): the char-LM scores the
+        // top candidates in sentence context; scores are folded back
+        // multiplicatively so the engine's own evidence still counts.
+        val finalRanked = if (deep && reranker != null && ranked.size > 1) {
+            val ctx = listOfNotNull(prev2Word, prevWord).joinToString(" ")
+            val lps = HashMap<String, Double>()
+            for (e in ranked.take(RERANK_CANDIDATE_LIMIT)) {
+                reranker.invoke(ctx, e.key)?.let { lps[e.key] = it }
+            }
+            if (lps.size < 2) ranked
+            else {
+                val lpMax = lps.values.max()
+                ranked.map { e ->
+                    val lp = lps[e.key]
+                    val adjusted =
+                        if (lp == null) e.value
+                        else (e.value *
+                            kotlin.math.exp((lpMax - lp) * RERANKER_BETA)).toInt()
+                    java.util.AbstractMap.SimpleEntry(e.key, adjusted)
+                        as Map.Entry<String, Int>
+                }.sortedBy { it.value }
+            }
+        } else ranked
         val autoReplace =
             if (deaccentFix && lower.length >= MIN_AUTOREPLACE_LENGTH) skeletonWord
-            else pickAutoReplace(lower, typedRank, typedTrusted, accentRank, ranked)
+            else pickAutoReplace(lower, typedRank, typedTrusted, accentRank, finalRanked)
         return Result(
-            suggestions = ranked.take(maxSuggestions).map { matchCase(typed, it.key) },
+            suggestions = finalRanked.take(maxSuggestions).map { matchCase(typed, it.key) },
             autoReplace = autoReplace?.let { matchCase(typed, it) }
         )
     }
@@ -497,6 +538,15 @@ class SuggestionEngine(
          *  1 + ln(1+count)×this, so a pair seen ~20 times in the corpus
          *  is ~7× more convincing. */
         private const val BIGRAM_BOOST = 2.0
+        /** Trigram context is sharper than bigram — boost accordingly. */
+        private const val TRIGRAM_BOOST = 3.0
+        /** How many top candidates the neural reranker scores per
+         *  boundary. */
+        private const val RERANK_CANDIDATE_LIMIT = 6
+        /** Weight of the LM's opinion: per-char log-prob deltas are
+         *  exponentiated with this factor onto the engine score.
+         *  Calibrated against the eval harness once a model ships. */
+        private const val RERANKER_BETA = 2.0
 
         // --- Physical key adjacency ---------------------------------------
 

@@ -10,3 +10,7 @@
 -dontwarn java.lang.invoke.**
 -dontwarn jdk.**
 -dontwarn sun.misc.**
+
+# TFLite: JNI entry points must survive shrinking.
+-keep class org.tensorflow.lite.** { *; }
+-dontwarn org.tensorflow.**

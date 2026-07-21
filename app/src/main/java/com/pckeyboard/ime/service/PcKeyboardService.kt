@@ -17,7 +17,9 @@ import com.pckeyboard.ime.clipboard.ClipboardHistory
 import com.pckeyboard.ime.dictionary.BigramStore
 import com.pckeyboard.ime.dictionary.DictionaryStore
 import com.pckeyboard.ime.dictionary.HunspellStore
+import com.pckeyboard.ime.dictionary.RerankerStore
 import com.pckeyboard.ime.dictionary.SuggestionEngine
+import com.pckeyboard.ime.dictionary.TrigramStore
 import com.pckeyboard.ime.dictionary.UserDictionary
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
@@ -289,6 +291,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             DictionaryStore.preload(this, currentLayoutId)
             HunspellStore.preload(this, currentLayoutId)
             BigramStore.preload(this, currentLayoutId)
+            TrigramStore.preload(this, currentLayoutId)
+            RerankerStore.preload(this, currentLayoutId)
             keyboardView?.setSuggestions(emptyList())
         }
         // If the user finished the clipboard editor with Send, commit the
@@ -418,6 +422,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             DictionaryStore.preload(this, currentLayoutId)
             HunspellStore.preload(this, currentLayoutId)
             BigramStore.preload(this, currentLayoutId)
+            TrigramStore.preload(this, currentLayoutId)
+            RerankerStore.preload(this, currentLayoutId)
         }
     }
 
@@ -582,19 +588,25 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      * and/or a comma; sentence punctuation (.!?;:) kills the context —
      * a new sentence starts fresh.
      */
-    private fun currentWordWithContext(): Pair<String, String?> {
-        val ic = currentInputConnection ?: return "" to null
-        val before = ic.getTextBeforeCursor(MAX_WORD_LOOKBACK, 0) ?: return "" to null
+    private fun currentWordWithContext(): Triple<String, String?, String?> {
+        val ic = currentInputConnection ?: return Triple("", null, null)
+        val before = ic.getTextBeforeCursor(MAX_WORD_LOOKBACK, 0)
+            ?: return Triple("", null, null)
         var i = before.length
         while (i > 0 && isWordChar(before[i - 1])) i--
-        if (i == 0 && before.length == MAX_WORD_LOOKBACK) return "" to null
+        if (i == 0 && before.length == MAX_WORD_LOOKBACK) return Triple("", null, null)
         val word = before.subSequence(i, before.length).toString()
-        var k = i
-        while (k > 0 && (before[k - 1] == ' ' || before[k - 1] == ',')) k--
-        if (k == 0 || !isWordChar(before[k - 1])) return word to null
-        var j = k
-        while (j > 0 && isWordChar(before[j - 1])) j--
-        return word to before.subSequence(j, k).toString()
+        fun wordEndingAt(end: Int): Pair<String, Int>? {
+            var k = end
+            while (k > 0 && (before[k - 1] == ' ' || before[k - 1] == ',')) k--
+            if (k == 0 || !isWordChar(before[k - 1])) return null
+            var j = k
+            while (j > 0 && isWordChar(before[j - 1])) j--
+            return before.subSequence(j, k).toString() to j
+        }
+        val prev1 = wordEndingAt(i) ?: return Triple(word, null, null)
+        val prev2 = wordEndingAt(prev1.second)
+        return Triple(word, prev1.first, prev2?.first)
     }
 
     private fun suggestionsActive(): Boolean =
@@ -612,29 +624,54 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             keyboardView?.setSuggestions(emptyList())
             return
         }
-        val (word, prevWord) = currentWordWithContext()
+        val (word, prevWord, prev2Word) = currentWordWithContext()
         if (word.isEmpty()) {
-            val bigrams = BigramStore.peek(currentLayoutId)
-            val prevRank = prevWord?.lowercase()?.let { dict.rankOf(it) } ?: -1
-            val predictions =
-                if (bigrams != null && prevRank >= 0)
-                    bigrams.topNext(prevRank, PREDICTION_COUNT).map { dict.wordAt(it.first) }
-                else emptyList()
-            keyboardView?.setSuggestions(predictions)
+            keyboardView?.setSuggestions(predictNext(dict, prevWord, prev2Word))
             return
         }
         keyboardView?.setSuggestions(
             newEngine(dict)
-                .suggest(word, com.pckeyboard.ime.view.SuggestionBarView.MAX_SUGGESTIONS, prevWord)
+                .suggest(
+                    word, com.pckeyboard.ime.view.SuggestionBarView.MAX_SUGGESTIONS,
+                    prevWord, prev2Word
+                )
                 .suggestions
         )
+    }
+
+    /** Next-word prediction for the strip: trigram continuations first
+     *  (two words of context), backfilled from the bigram model. */
+    private fun predictNext(
+        dict: com.pckeyboard.ime.dictionary.WordDictionary,
+        prevWord: String?,
+        prev2Word: String?
+    ): List<String> {
+        val prevRank = prevWord?.lowercase()?.let { dict.rankOf(it) } ?: return emptyList()
+        if (prevRank < 0) return emptyList()
+        val prev2Rank = prev2Word?.lowercase()?.let { dict.rankOf(it) } ?: -1
+        val out = LinkedHashSet<String>()
+        TrigramStore.peek(currentLayoutId)?.let { tri ->
+            if (prev2Rank >= 0) {
+                tri.topNext(prev2Rank, prevRank, PREDICTION_COUNT)
+                    .forEach { out.add(dict.wordAt(it.first)) }
+            }
+        }
+        BigramStore.peek(currentLayoutId)?.let { bi ->
+            if (out.size < PREDICTION_COUNT) {
+                bi.topNext(prevRank, PREDICTION_COUNT)
+                    .forEach { if (out.size < PREDICTION_COUNT) out.add(dict.wordAt(it.first)) }
+            }
+        }
+        return out.toList()
     }
 
     private fun newEngine(dict: com.pckeyboard.ime.dictionary.WordDictionary) =
         SuggestionEngine(
             dict, userDict(),
             HunspellStore.validatorFor(currentLayoutId),
-            BigramStore.peek(currentLayoutId)
+            BigramStore.peek(currentLayoutId),
+            TrigramStore.peek(currentLayoutId),
+            RerankerStore.scorerFor(currentLayoutId)
         )
 
     /**
@@ -798,7 +835,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (word.length < 2 || word.length > 32) return
         if (word.lowercase() in autocorrectVetoes) return
         if (consumeInsistIfRetyped(word)) return
-        val replacement = newEngine(dict).suggest(word).autoReplace ?: return
+        val replacement = newEngine(dict).suggest(word, deep = true).autoReplace ?: return
         if (replacement == word) return
         val delta = replacement.length - word.length
         ic.beginBatchEdit()
@@ -826,10 +863,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         ) return false
         val ic = currentInputConnection ?: return false
         val dict = DictionaryStore.peek(currentLayoutId) ?: return false
-        val (word, prevWord) = currentWordWithContext()
+        val (word, prevWord, prev2Word) = currentWordWithContext()
         if (word.isEmpty() || word.lowercase() in autocorrectVetoes) return false
         if (consumeInsistIfRetyped(word)) return false
-        val replacement = newEngine(dict).suggest(word, prevWord = prevWord).autoReplace
+        val replacement = newEngine(dict)
+            .suggest(word, prevWord = prevWord, prev2Word = prev2Word, deep = true)
+            .autoReplace
         if (replacement == null || replacement == word) return false
         ic.beginBatchEdit()
         ic.deleteSurroundingText(word.length, 0)
