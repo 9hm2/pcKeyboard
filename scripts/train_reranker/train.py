@@ -69,12 +69,17 @@ def load_windows(path, charmap, seq_len, limit):
     return np.asarray(xs, dtype=np.int32)
 
 
-def build_model(vocab, seq_len):
+def build_model(vocab, seq_len, batch_size=None, unroll=False):
+    """batch_size=None + unroll=False for training (fast cudnn path).
+    For TFLite export use batch_size=1 + unroll=True: dynamic-batch GRUs
+    trace to tf.TensorList ops the converter can't lower ("requires
+    element_shape to be static"), while an unrolled fixed-shape GRU
+    converts to plain builtin ops. Same weights either way."""
     import tensorflow as tf
-    inp = tf.keras.Input(shape=(seq_len,), dtype="int32")
+    inp = tf.keras.Input(shape=(seq_len,), batch_size=batch_size, dtype="int32")
     x = tf.keras.layers.Embedding(vocab, 128, mask_zero=False)(inp)
-    x = tf.keras.layers.GRU(384, return_sequences=True)(x)
-    x = tf.keras.layers.GRU(384, return_sequences=True)(x)
+    x = tf.keras.layers.GRU(384, return_sequences=True, unroll=unroll)(x)
+    x = tf.keras.layers.GRU(384, return_sequences=True, unroll=unroll)(x)
     out = tf.keras.layers.Dense(vocab)(x)
     model = tf.keras.Model(inp, out)
     model.compile(
@@ -92,7 +97,7 @@ def export_tflite(args, chars, vocab):
     import tensorflow as tf
 
     out = Path(args.out_dir)
-    model = build_model(vocab, args.seq_len)
+    model = build_model(vocab, args.seq_len, batch_size=1, unroll=True)
     model.load_weights(out / f"reranker_{args.lang}.weights.h5")
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]  # dynamic-range INT8
