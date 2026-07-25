@@ -86,7 +86,7 @@ class NeuralReranker private constructor(
                 model.put(modelBytes)
                 model.rewind()
                 val interpreter = Interpreter(model, Interpreter.Options().apply {
-                    numThreads = 2
+                    numThreads = 4
                 })
                 val inShape = interpreter.getInputTensor(0).shape()   // [1, seqLen]
                 val outShape = interpreter.getOutputTensor(0).shape() // [1, seqLen, vocab]

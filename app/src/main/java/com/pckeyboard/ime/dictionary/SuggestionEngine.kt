@@ -238,13 +238,18 @@ class SuggestionEngine(
             .filter { candidateAcceptable(it.key) }
 
         if (ranked.isEmpty()) return EMPTY
-        // Neural rerank (word boundaries only): the char-LM scores the
-        // top candidates in sentence context; scores are folded back
-        // multiplicatively so the engine's own evidence still counts.
-        val finalRanked = if (deep && reranker != null && ranked.size > 1) {
+        // Neural rerank — word boundaries only, and ONLY while an actual
+        // correction decision is on the table (!typedTrusted): scoring
+        // completions of a correct word cost a hundred ms of main-thread
+        // GRU inference per Space for nothing, which is what made typing
+        // feel sluggish. A hard time budget caps the worst case: score
+        // as many candidates as fit, use what we got.
+        val finalRanked = if (deep && reranker != null && !typedTrusted && ranked.size > 1) {
             val ctx = listOfNotNull(prev2Word, prevWord).joinToString(" ")
             val lps = HashMap<String, Double>()
+            val deadline = System.nanoTime() + RERANK_TIME_BUDGET_MS * 1_000_000L
             for (e in ranked.take(RERANK_CANDIDATE_LIMIT)) {
+                if (System.nanoTime() > deadline) break
                 reranker.invoke(ctx, e.key)?.let { lps[e.key] = it }
             }
             if (lps.size < 2) ranked
@@ -650,7 +655,11 @@ class SuggestionEngine(
         private const val PERSONAL_BIGRAM_BOOST = 4.0
         /** How many top candidates the neural reranker scores per
          *  boundary. */
-        private const val RERANK_CANDIDATE_LIMIT = 6
+        private const val RERANK_CANDIDATE_LIMIT = 4
+        /** Hard wall-clock cap for neural scoring per boundary — beyond
+         *  this the partial scores are used as-is. Keeps a slow device
+         *  from ever hitching the keyboard. */
+        private const val RERANK_TIME_BUDGET_MS = 50L
         /** Weight of the LM's opinion: per-char log-prob deltas are
          *  exponentiated with this factor onto the engine score.
          *  Calibrated against the eval harness once a model ships. */
