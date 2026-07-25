@@ -1223,13 +1223,26 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         pendingRevert = null
         pendingInsist = null
         lastEventWasTyping = false
+        // Replace the WHOLE word around the cursor, not just the part
+        // before it — tapping into the middle of a word and picking a
+        // suggestion used to leave the tail behind ("javítom mal").
         val current = currentWord()
+        val after = ic.getTextAfterCursor(MAX_WORD_LOOKBACK, 0)?.toString() ?: ""
+        var suffixLen = 0
+        while (suffixLen < after.length && isWordChar(after[suffixLen])) suffixLen++
+        // Only append a space when nothing follows — an existing space
+        // or punctuation must not be doubled.
+        val next = after.getOrNull(suffixLen)
+        val insert = if (next == null) "$word " else word
         ic.beginBatchEdit()
-        if (current.isNotEmpty()) ic.deleteSurroundingText(current.length, 0)
-        ic.commitText("$word ", 1)
+        if (current.isNotEmpty() || suffixLen > 0) {
+            ic.deleteSurroundingText(current.length, suffixLen)
+        }
+        ic.commitText(insert, 1)
         ic.endBatchEdit()
-        if (current.isNotEmpty() && !current.equals(word, ignoreCase = true)) {
-            personalModel().recordCorrection(current, word)
+        val replaced = current + after.substring(0, suffixLen)
+        if (replaced.isNotEmpty() && !replaced.equals(word, ignoreCase = true)) {
+            personalModel().recordCorrection(replaced, word)
         }
         keyboardView?.setSuggestions(emptyList())
     }
