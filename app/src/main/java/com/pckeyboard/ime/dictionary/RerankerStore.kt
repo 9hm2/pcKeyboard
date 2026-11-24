@@ -3,6 +3,8 @@ package com.pckeyboard.ime.dictionary
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.pckeyboard.ime.BuildConfig
+import com.pckeyboard.ime.util.NativeCrashGuard
 import java.util.concurrent.Executors
 
 /**
@@ -42,7 +44,25 @@ object RerankerStore {
         loading.add(langId)
         val appContext = context.applicationContext
         executor.execute {
+            // Native code can kill the whole process, which no try/catch
+            // survives — so the load AND a first warm-up inference run
+            // inside a crash-loop guard: two consecutive deaths in there
+            // and the reranker is skipped (the keyboard keeps working
+            // without it) until the next app version.
+            val guard = try {
+                NativeCrashGuard.forContext(appContext, BuildConfig.VERSION_CODE)
+            } catch (_: Throwable) { null }
+            if (guard != null && guard.shouldSkip(NativeCrashGuard.FEATURE_RERANKER)) {
+                mainHandler.post { loading.remove(langId); failed.add(langId) }
+                return@execute
+            }
+            guard?.begin(NativeCrashGuard.FEATURE_RERANKER)
             val model = NeuralReranker.load(appContext, langId)
+            // Exercise the native inference path once, here on the
+            // background thread, so an incompatible device crashes (and
+            // is caught by the guard) at load time — not mid-typing.
+            model?.scoreCandidate("a", "a")
+            guard?.end(NativeCrashGuard.FEATURE_RERANKER)
             mainHandler.post {
                 loading.remove(langId)
                 if (model == null) failed.add(langId) else loaded[langId] = model

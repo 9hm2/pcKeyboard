@@ -11,6 +11,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputMethodSubtype
 import android.text.InputType
+import com.pckeyboard.ime.R
 import com.pckeyboard.ime.clipboard.ClipboardEditorActivity
 import com.pckeyboard.ime.clipboard.ClipboardEditorBridge
 import com.pckeyboard.ime.clipboard.ClipboardHistory
@@ -23,6 +24,8 @@ import com.pckeyboard.ime.dictionary.RerankerStore
 import com.pckeyboard.ime.dictionary.SuggestionEngine
 import com.pckeyboard.ime.dictionary.TrigramStore
 import com.pckeyboard.ime.dictionary.UserDictionary
+import com.pckeyboard.ime.grammar.CommaRules
+import com.pckeyboard.ime.grammar.Proofreader
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
 import com.pckeyboard.ime.model.Key
@@ -38,6 +41,7 @@ import com.pckeyboard.ime.theme.ThemeRepository
 import com.pckeyboard.ime.updater.UpdateScheduler
 import com.pckeyboard.ime.view.KeyboardView
 import com.pckeyboard.ime.view.MenuAction
+import com.pckeyboard.ime.view.VoiceRecognitionController
 
 /** Compact UI label for a language pack id ("en_US" → "EN"). Shared with
  *  KeyboardView.showActionMenu so the locale row reads naturally. */
@@ -97,6 +101,44 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      *  tap reverts the correction; cleared by the next key. */
     private var pendingRevert: Triple<String, String, String>? = null
 
+    /** What the last Proofread replaced, so the strip can offer a one-tap
+     *  undo. [wholeField] = it rewrote the entire field text. */
+    private class ProofreadUndo(
+        val original: String,
+        val replacement: String,
+        val wholeField: Boolean
+    )
+    private var proofreadUndo: ProofreadUndo? = null
+
+    // --- Voice dictation session (owned here, NOT by the view) -----------
+    private var voice: VoiceRecognitionController? = null
+    private val displayGrace = DisplayChangeGrace()
+
+    private fun startVoiceSession() {
+        if (voice != null) return
+        val controller = VoiceRecognitionController(
+            context = this,
+            recognitionLocale = recognitionLocaleFor(currentLayoutId),
+            onFinalText = { text ->
+                onText(text)
+                endVoiceSession()
+            },
+            onAbandoned = {
+                voice = null
+                keyboardView?.hideVoiceInput()
+            }
+        )
+        voice = controller
+        keyboardView?.showVoiceInput(controller)
+    }
+
+    /** Closes the overlay and ends the session for good. */
+    private fun endVoiceSession() {
+        keyboardView?.hideVoiceInput()
+        voice?.destroy()
+        voice = null
+    }
+
     private fun userDict(): UserDictionary =
         userDicts.getOrPut(currentLayoutId) { UserDictionary(this, currentLayoutId) }
 
@@ -146,6 +188,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         themeRepo = ThemeRepository(this)
         kbPrefs = KeyboardPrefs(this)
         currentLayoutId = kbPrefs.currentLanguage
+        resources.configuration.let {
+            displayGrace.onConfiguration(
+                it.orientation, it.screenWidthDp, it.screenHeightDp,
+                android.os.SystemClock.uptimeMillis()
+            )
+        }
         // WorkManager initialises through credential-encrypted storage,
         // which is unreachable during Direct Boot (the window between
         // device boot and the first user unlock when the IME also has
@@ -163,6 +211,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onDestroy() {
+        voice?.destroy()
+        voice = null
         (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)
             ?.removePrimaryClipChangedListener(clipListener)
         super.onDestroy()
@@ -224,51 +274,13 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
          *  other symbols deliberately don't (ids, code, "abc1"). */
         private const val PUNCT_BOUNDARIES = ".,!?;:"
 
-        /** Conjunctions that grammatically require a comma before them,
-         *  per language (AkH. 248–260: tagmondathatár, értelmező,
-         *  hasonlítás, illetve/valamint/avagy). */
-        private val COMMA_BEFORE: Map<String, Set<String>> = mapOf(
-            "hu_HU" to setOf(
-                "hogy", "de", "mert", "hanem", "viszont", "ugyanis",
-                "hiszen", "mivel", "ami", "aki", "amit", "akit",
-                "amely", "amelyik", "ahol", "amikor", "ahogy", "amiért",
-                "mint", "illetve", "valamint", "avagy", "azaz",
-                "vagyis", "ámde", "mintha"
-            ),
-            "de_DE" to setOf(
-                "dass", "weil", "aber", "sondern", "obwohl", "damit",
-                "denn", "wenn", "falls", "während", "sodass"
-            )
-        )
-
-        /** Paired coordinating conjunctions: standalone they take no
-         *  comma ("ezt vagy azt"), but the SECOND occurrence within one
-         *  sentence does ("vagy ezt, vagy azt" — AkH. paired-conjunction
-         *  rule). */
-        private val PAIRED_CONJUNCTIONS: Map<String, Set<String>> = mapOf(
-            "hu_HU" to setOf("vagy", "akár", "hol", "mind", "sem", "se"),
-            "de_DE" to setOf("oder", "entweder", "weder", "noch")
-        )
-
-        /** "több mint száz" style quantity comparisons take NO comma
-         *  before "mint" — the exception to the always-comma rule. */
-        private val MINT_NO_COMMA_PREV = setOf("több", "kevesebb", "jobb", "rosszabb")
-
-        /** Words after which the comma is NOT inserted — coordinating
-         *  conjunctions form comma-free chains ("és hogy", "vagy aki"),
-         *  and stacking a conjunction on a conjunction never takes one. */
-        private val NO_COMMA_AFTER: Map<String, Set<String>> = mapOf(
-            "hu_HU" to (setOf(
-                "és", "s", "vagy", "meg", "akár", "se", "sem"
-            ) + COMMA_BEFORE.getValue("hu_HU")),
-            "de_DE" to (setOf(
-                "und", "oder", "sowie", "bzw", "beziehungsweise", "wie"
-            ) + COMMA_BEFORE.getValue("de_DE"))
-        )
-
         /** How much text the comma helper looks back for sentence
          *  context (paired-conjunction detection). */
         private const val COMMA_CONTEXT_LOOKBACK = 160
+        /** Largest text a Proofread processes in one go (each side of
+         *  the caret) and its wall-clock budget. */
+        private const val PROOFREAD_MAX_CHARS = 4000
+        private const val PROOFREAD_BUDGET_MS = 1500L
         /** How many next-word predictions the strip shows after a
          *  completed word. */
         private const val PREDICTION_COUNT = 5
@@ -289,6 +301,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             android.graphics.drawable.ColorDrawable(0)
         )
         bindCurrentLayout()
+        // A dictation that was running when the view tree got rebuilt
+        // (rotation / fold) re-attaches its overlay to the fresh view.
+        voice?.let { view.showVoiceInput(it) }
         return view
     }
 
@@ -370,7 +385,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.hideEmojiPicker()
         keyboardView?.hideEmojiSearchHeader()
         keyboardView?.hideClipboard()
-        keyboardView?.hideVoiceInput()
+        // A screen rotation / fold restarts the input session; a running
+        // dictation must survive that (the Rambler "rotation grace"
+        // idea). Any other session end stops it as before.
+        if (voice != null && !displayGrace.isRecent(android.os.SystemClock.uptimeMillis())) {
+            endVoiceSession()
+        }
         // Drop any sticky / locked modifier state — Shift, Ctrl, Alt,
         // Caps Lock, etc. — so reopening the keyboard never lands the
         // user in some "still locked from last session" surprise.
@@ -379,6 +399,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        displayGrace.onConfiguration(
+            newConfig.orientation, newConfig.screenWidthDp, newConfig.screenHeightDp,
+            android.os.SystemClock.uptimeMillis()
+        )
         bindCurrentLayout()
     }
 
@@ -511,6 +535,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onKey(key: Key, modifiers: ModifierState) {
         if (currentInputConnection == null) return
+        proofreadUndo = null
         if (key.type == KeyType.BACKSPACE) {
             sendKey(KeyEvent.KEYCODE_DEL, modifiers)
             updateSuggestions()
@@ -673,19 +698,111 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             val revert = pendingRevert
             val predictions = predictNext(dict, prevWord, prev2Word)
             keyboardView?.setSuggestions(
-                if (revert != null) (listOf(revert.first) + predictions).distinct()
-                else predictions
+                withUndoChip(
+                    if (revert != null) (listOf(revert.first) + predictions).distinct()
+                    else predictions
+                )
             )
             return
         }
         keyboardView?.setSuggestions(
-            newEngine(dict)
-                .suggest(
-                    word, com.pckeyboard.ime.view.SuggestionBarView.MAX_SUGGESTIONS,
-                    prevWord, prev2Word
-                )
-                .suggestions
+            withUndoChip(
+                newEngine(dict)
+                    .suggest(
+                        word, com.pckeyboard.ime.view.SuggestionBarView.MAX_SUGGESTIONS,
+                        prevWord, prev2Word
+                    )
+                    .suggestions
+            )
         )
+    }
+
+    private fun withUndoChip(words: List<String>): List<String> =
+        if (proofreadUndo != null) listOf(getString(R.string.proofread_undo_chip)) + words
+        else words
+
+    private fun toast(resId: Int, vararg args: Any) {
+        android.widget.Toast.makeText(this, getString(resId, *args), android.widget.Toast.LENGTH_SHORT)
+            .show()
+    }
+
+    /**
+     * Offline proofread: runs the correction engine (+ AkH comma rules)
+     * over the selection, or over the whole field when nothing is
+     * selected. One tap on the first strip chip undoes it.
+     */
+    private fun runProofread() {
+        val ic = currentInputConnection ?: return
+        if (!suggestionsEnabled) { toast(R.string.proofread_unavailable); return }
+        val dict = DictionaryStore.peek(currentLayoutId)
+        if (dict == null) { toast(R.string.proofread_loading); return }
+
+        val selected = ic.getSelectedText(0)?.toString().orEmpty()
+        val before: String
+        val after: String
+        val source: String
+        val wholeField = selected.isEmpty()
+        if (!wholeField) {
+            before = ""; after = ""; source = selected
+        } else {
+            before = ic.getTextBeforeCursor(PROOFREAD_MAX_CHARS, 0)?.toString().orEmpty()
+            after = ic.getTextAfterCursor(PROOFREAD_MAX_CHARS, 0)?.toString().orEmpty()
+            if (before.length >= PROOFREAD_MAX_CHARS || after.length >= PROOFREAD_MAX_CHARS) {
+                toast(R.string.proofread_too_long); return
+            }
+            source = before + after
+        }
+        if (source.isBlank()) { toast(R.string.proofread_none); return }
+        if (source.length > PROOFREAD_MAX_CHARS) { toast(R.string.proofread_too_long); return }
+
+        val engine = newEngine(dict)
+        val reader = Proofreader(currentLayoutId) { word, prev, prev2 ->
+            if (word.lowercase() in autocorrectVetoes) null
+            else engine.suggest(word, 1, prev, prev2, deep = true).autoReplace
+        }
+        val result = reader.proofread(source, PROOFREAD_BUDGET_MS)
+        if (result.changeCount == 0) { toast(R.string.proofread_none); return }
+
+        ic.beginBatchEdit()
+        if (wholeField) ic.deleteSurroundingText(before.length, after.length)
+        ic.commitText(result.text, 1)
+        ic.endBatchEdit()
+        if (wholeField && after.isNotEmpty()) {
+            // Put the caret back where it was relative to the edited text.
+            val caret = reader.proofread(before, PROOFREAD_BUDGET_MS).text.length
+            ic.setSelection(caret, caret)
+        }
+        proofreadUndo = ProofreadUndo(source, result.text, wholeField)
+        pendingRevert = null
+        toast(R.string.proofread_done, result.changeCount)
+        updateSuggestions()
+    }
+
+    /** Restores the text a Proofread replaced, if it's still there. */
+    private fun undoProofread(): Boolean {
+        val u = proofreadUndo ?: return false
+        proofreadUndo = null
+        val ic = currentInputConnection ?: return false
+        ic.beginBatchEdit()
+        val ok = if (u.wholeField) {
+            val b = ic.getTextBeforeCursor(PROOFREAD_MAX_CHARS, 0)?.toString().orEmpty()
+            val a = ic.getTextAfterCursor(PROOFREAD_MAX_CHARS, 0)?.toString().orEmpty()
+            if (b + a == u.replacement) {
+                ic.deleteSurroundingText(b.length, a.length)
+                ic.commitText(u.original, 1)
+                true
+            } else false
+        } else {
+            val b = ic.getTextBeforeCursor(u.replacement.length, 0)?.toString()
+            if (b == u.replacement) {
+                ic.deleteSurroundingText(u.replacement.length, 0)
+                ic.commitText(u.original, 1)
+                true
+            } else false
+        }
+        ic.endBatchEdit()
+        keyboardView?.setSuggestions(emptyList())
+        return ok
     }
 
     /** Next-word prediction for the strip: trigram continuations first
@@ -782,58 +899,21 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (!suggestionsActive() ||
             kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_AUTO
         ) return false
-        val commaBefore = COMMA_BEFORE[currentLayoutId] ?: return false
-        val paired = PAIRED_CONJUNCTIONS[currentLayoutId] ?: emptySet()
+        if (!CommaRules.supports(currentLayoutId)) return false
         val ic = currentInputConnection ?: return false
         val word = currentWord()
-        val lower = word.lowercase()
-        if (word.isEmpty() || (lower !in commaBefore && lower !in paired)) return false
+        if (word.isEmpty()) return false
         val before = ic.getTextBeforeCursor(COMMA_CONTEXT_LOOKBACK, 0)?.toString()
             ?: return false
         if (!before.endsWith(word)) return false
         val prefix = before.dropLast(word.length)
-        var i = prefix.length
-        while (i > 0 && prefix[i - 1] == ' ') i--
-        val spaces = prefix.length - i
-        // Needs a separating space AND a preceding word on the same
-        // sentence: at text start / after punctuation there's no clause
-        // boundary to mark.
-        if (spaces == 0 || i == 0 || !isWordChar(prefix[i - 1])) return false
-        var j = i
-        while (j > 0 && isWordChar(prefix[j - 1])) j--
-        val prevWord = prefix.substring(j, i).lowercase()
-        if (prevWord in (NO_COMMA_AFTER[currentLayoutId] ?: emptySet())) return false
-
-        val insert = when {
-            lower in commaBefore ->
-                // "több mint száz" style quantity comparison — no comma.
-                !(lower == "mint" && prevWord in MINT_NO_COMMA_PREV)
-            else ->
-                // Paired conjunction: only the SECOND occurrence within
-                // the current sentence takes the comma.
-                sentenceContains(prefix, lower)
-        }
-        if (!insert) return false
+        if (!CommaRules.shouldInsertCommaBefore(currentLayoutId, prefix, word)) return false
+        val spaces = CommaRules.trailingSpaces(prefix)
         ic.beginBatchEdit()
         ic.deleteSurroundingText(word.length + spaces, 0)
         ic.commitText(", $word", 1)
         ic.endBatchEdit()
         return true
-    }
-
-    /** True when [word] occurs as a standalone word in the current
-     *  sentence (scanning [prefix] back to the last sentence ender). */
-    private fun sentenceContains(prefix: String, word: String): Boolean {
-        val sentenceStart = prefix.indexOfLast { it == '.' || it == '!' || it == '?' } + 1
-        val sentence = prefix.substring(sentenceStart).lowercase()
-        var idx = 0
-        while (idx < sentence.length) {
-            while (idx < sentence.length && !isWordChar(sentence[idx])) idx++
-            val start = idx
-            while (idx < sentence.length && isWordChar(sentence[idx])) idx++
-            if (idx > start && sentence.substring(start, idx) == word) return true
-        }
-        return false
     }
 
     /**
@@ -1145,9 +1225,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                 kbPrefs.sideSplitEnabled = !kbPrefs.sideSplitEnabled
                 bindCurrentLayout()
             }
-            MenuAction.OpenVoiceInput -> {
-                keyboardView?.showVoiceInput(recognitionLocaleFor(currentLayoutId))
-            }
+            MenuAction.OpenVoiceInput -> startVoiceSession()
+            MenuAction.Proofread -> runProofread()
             is MenuAction.SetRightOfSpace -> {
                 kbPrefs.rightOfSpaceAction = action.action
                 bindCurrentLayout()
@@ -1164,6 +1243,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         "es_ES" -> "es-ES"
         else    -> "en-US"
     }
+
+    override fun onVoiceClosed() = endVoiceSession()
 
     override fun onOpenAppSettings() {
         // Deep-link straight to this app's "App info" page so the user
@@ -1200,6 +1281,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      *  labelled example "typed -> meant" for the personal typo model. */
     override fun onSuggestionPicked(word: String) {
         val ic = currentInputConnection ?: return
+        if (proofreadUndo != null && word == getString(R.string.proofread_undo_chip)) {
+            undoProofread()
+            return
+        }
         // Revert chip: restore what the user actually typed, veto and
         // learn it — same semantics as the retype-to-keep flow.
         val revert = pendingRevert

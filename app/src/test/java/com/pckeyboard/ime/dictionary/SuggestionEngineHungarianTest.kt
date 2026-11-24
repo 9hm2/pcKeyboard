@@ -120,6 +120,18 @@ class SuggestionEngineHungarianTest {
     }
 
     @Test
+    fun proofreaderOnRealEngineFixesWholeParagraph() {
+        val reader = com.pckeyboard.ime.grammar.Proofreader("hu_HU") { w, p, p2 ->
+            engine.suggest(w, 1, p, p2, deep = true).autoReplace
+        }
+        val r = reader.proofread("azt mondta hogy teljrsem szeretlk de kerdojel kell")
+        assertEquals("azt mondta, hogy teljesen szeretlek, de kérdőjel kell", r.text)
+        // Correct text passes through untouched.
+        val ok = "Azt mondta, hogy nagyon szép idő van."
+        assertEquals(ok, reader.proofread(ok).text)
+    }
+
+    @Test
     fun foreignWordsAreProtectedByCrossLanguageTrust() {
         // Bilingual typing: an English word typed while the Hungarian
         // layout is active must never be corrected into Hungarian when

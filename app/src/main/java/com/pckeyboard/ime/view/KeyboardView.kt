@@ -505,6 +505,7 @@ class KeyboardView @JvmOverloads constructor(
             MenuItem("🎤", "Voice input",       MenuAction.OpenVoiceInput),
             MenuItem("😀", "Emoji",            MenuAction.OpenEmoji),
             MenuItem("📋", "Clipboard",        MenuAction.OpenClipboard),
+            MenuItem("✍",  "Proofread (offline)", MenuAction.Proofread),
             MenuItem("⚙",  "Keyboard settings", MenuAction.OpenSettings)
         )
         presentActionMenu(anchor, items)
@@ -628,26 +629,21 @@ class KeyboardView @JvmOverloads constructor(
     // --- Voice input overlay --------------------------------------------
 
     /**
-     * Mounts a [VoiceInputView] over the keys area. The view drives
-     * Android's [android.speech.SpeechRecognizer] in [recognitionLocale]
-     * and commits the final transcript back via [Listener.onText].
+     * Mounts a [VoiceInputView] over the keys area as a renderer of the
+     * service-owned [controller]. The dictation session itself lives in
+     * the service, so a rebuilt KeyboardView (rotation / fold) can just
+     * call this again and continue where the old one left off.
      *
      * If RECORD_AUDIO isn't granted yet, the view shows a hint and the
-     * mic button opens this app's permission page (so the user can
-     * grant it from there — an IME service can't request runtime
-     * permissions directly).
+     * mic button opens this app's permission page (an IME service can't
+     * request runtime permissions directly).
      */
-    fun showVoiceInput(recognitionLocale: String) {
+    fun showVoiceInput(controller: VoiceRecognitionController) {
         if (voiceInputView != null) return
         val theme = theme ?: return
         val view = VoiceInputView(
-            context, theme,
-            recognitionLocale = recognitionLocale,
-            onText = { transcript ->
-                this@KeyboardView.listener?.onText(transcript)
-                hideVoiceInput()
-            },
-            onClose = { hideVoiceInput() },
+            context, theme, controller,
+            onClose = { this@KeyboardView.listener?.onVoiceClosed() },
             onOpenAppSettings = {
                 this@KeyboardView.listener?.onOpenAppSettings()
             }
@@ -1126,5 +1122,7 @@ class KeyboardView @JvmOverloads constructor(
          *  RECORD_AUDIO from there. IME services can't request runtime
          *  permissions directly, hence the deep-link. */
         fun onOpenAppSettings()
+        /** The user closed the voice overlay (✕) — end the session. */
+        fun onVoiceClosed()
     }
 }

@@ -93,4 +93,11 @@
     <string name="voice_error_network">Network error — check connection</string>
     <string name="voice_error_no_match">Didn\'t catch that — tap mic to try again</string>
     <string name="voice_error_generic">Recognition error (code %1$d)</string>
+
+    <string name="proofread_done">Proofread: %1$d fixes</string>
+    <string name="proofread_none">Nothing to fix</string>
+    <string name="proofread_loading">Dictionary is still loading — try again in a moment</string>
+    <string name="proofread_too_long">Text too long — select a part to proofread</string>
+    <string name="proofread_unavailable">Proofreading isn\'t available in this field</string>
+    <string name="proofread_undo_chip">↩ Undo proofread</string>
 </resources>

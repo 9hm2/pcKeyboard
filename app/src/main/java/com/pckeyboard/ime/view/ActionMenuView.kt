@@ -210,6 +210,8 @@ sealed class MenuAction {
     object ToggleSideSplit : MenuAction()
     /** Open the system speech-recognition overlay anchored to the IME. */
     object OpenVoiceInput : MenuAction()
+    /** Offline proofread of the selection (or the whole field). */
+    object Proofread : MenuAction()
     /** Reassign the right-of-Space slot ("symbols" / "emoji" / "alt"). */
     data class SetRightOfSpace(val action: String) : MenuAction()
 }
