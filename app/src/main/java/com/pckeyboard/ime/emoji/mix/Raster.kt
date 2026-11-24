@@ -541,6 +541,29 @@ fun Raster.wipeDarkDetails(cx: Float, cy: Float, radius: Float): Boolean {
         if (vmax < 0.32f) { dark[y * bw + x] = true; darkPx++ }
     }
     if (darkPx == 0 || darkPx > discPx * 0.30f) return false
+    // Keep only SMALL dark blobs (eyes, mouth, nostrils). A big connected
+    // dark structure — a turtle's shell seams, outlines — is part of the
+    // body, not a face, and must survive.
+    val label = IntArray(bw * bh)
+    val maxBlob = (discPx * 0.15f).toInt().coerceAtLeast(12)
+    var next = 0
+    val stack = IntArray(bw * bh)
+    for (start in 0 until bw * bh) {
+        if (!dark[start] || label[start] != 0) continue
+        next++
+        var sp = 0; stack[sp++] = start; label[start] = next
+        val members = ArrayList<Int>()
+        while (sp > 0) {
+            val cur = stack[--sp]; members.add(cur)
+            val cx2 = cur % bw; val cy2 = cur / bw
+            if (cx2 > 0 && dark[cur - 1] && label[cur - 1] == 0) { label[cur - 1] = next; stack[sp++] = cur - 1 }
+            if (cx2 < bw - 1 && dark[cur + 1] && label[cur + 1] == 0) { label[cur + 1] = next; stack[sp++] = cur + 1 }
+            if (cy2 > 0 && dark[cur - bw] && label[cur - bw] == 0) { label[cur - bw] = next; stack[sp++] = cur - bw }
+            if (cy2 < bh - 1 && dark[cur + bw] && label[cur + bw] == 0) { label[cur + bw] = next; stack[sp++] = cur + bw }
+        }
+        if (members.size > maxBlob) for (m in members) dark[m] = false
+    }
+    if (dark.none { it }) return false
     // Grow the dark mask to swallow the soft fringe around eyes / lines.
     val grow = max(2, (radius / 13f).toInt())
     val mask = BooleanArray(bw * bh)
@@ -554,20 +577,37 @@ fun Raster.wipeDarkDetails(cx: Float, cy: Float, radius: Float): Boolean {
         }
         mask[y * bw + x] = hit
     }
-    // Diffusion fill: start from the mean of the unmasked disc, then
-    // repeatedly average neighbours so the surrounding colour flows in.
+    // Fill: every masked pixel takes the colour of its NEAREST known
+    // pixel (multi-source BFS from the unmasked, opaque neighbourhood —
+    // including pixels just outside the disc), then a few smoothing
+    // passes blend the seams. Starting from the nearest colour (not a
+    // disc-wide mean) keeps a green head green next to an olive shell.
     val rr = FloatArray(bw * bh); val gg = FloatArray(bw * bh); val bb = FloatArray(bw * bh)
-    var mr = 0f; var mg = 0f; var mb = 0f; var mn = 0
+    val known = BooleanArray(bw * bh)
+    val queue = IntArray(bw * bh)
+    var qh = 0; var qt = 0
     for (i in 0 until bw * bh) {
-        if (!inDisc[i] || mask[i]) continue
         val gx = x0 + i % bw; val gy = y0 + i / bw
         val p = px[gy * w + gx]
+        if (mask[i] || Raster.alpha(p) < 128) continue
         rr[i] = Raster.red(p).toFloat(); gg[i] = Raster.green(p).toFloat(); bb[i] = Raster.blue(p).toFloat()
-        mr += rr[i]; mg += gg[i]; mb += bb[i]; mn++
+        known[i] = true; queue[qt++] = i
     }
-    if (mn == 0) return false
-    for (i in 0 until bw * bh) if (mask[i]) { rr[i] = mr / mn; gg[i] = mg / mn; bb[i] = mb / mn }
-    repeat(60) {
+    if (qt == 0) return false
+    while (qh < qt) {
+        val cur = queue[qh++]
+        val cx2 = cur % bw; val cy2 = cur / bw
+        fun visit(nb: Int) {
+            if (known[nb] || !mask[nb]) return
+            rr[nb] = rr[cur]; gg[nb] = gg[cur]; bb[nb] = bb[cur]
+            known[nb] = true; queue[qt++] = nb
+        }
+        if (cx2 > 0) visit(cur - 1)
+        if (cx2 < bw - 1) visit(cur + 1)
+        if (cy2 > 0) visit(cur - bw)
+        if (cy2 < bh - 1) visit(cur + bw)
+    }
+    repeat(8) {
         for (y in 0 until bh) for (x in 0 until bw) {
             val i = y * bw + x
             if (!mask[i]) continue

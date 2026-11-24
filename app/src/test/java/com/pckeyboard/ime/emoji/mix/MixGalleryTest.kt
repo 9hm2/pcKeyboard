@@ -35,7 +35,7 @@ class MixGalleryTest {
         fun input(code: String, text: String) =
             MixInput(text, load(dir, code), MixRecipes.isFaceEmoji(text))
         val pairs = (System.getenv("PCK_MIX_PAIRS") ?: "1f600:😀+1f525:🔥").split(",")
-        val size = 200
+        val size = (System.getenv("PCK_MIX_SIZE") ?: "200").toInt()
         val manifest = StringBuilder()
         for ((i, spec) in pairs.withIndex()) {
             val (l, r) = spec.split("+")

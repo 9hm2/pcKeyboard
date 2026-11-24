@@ -102,8 +102,8 @@ object MixRecipes {
                 // A head sits BESIDE the body (turtle, dog...); a lobe
                 // straight above it (a flame's tip, a heart's lobe) is
                 // only a head if it is nearly body-sized.
-                it.r >= 0.11f && it.r <= main.r * 0.95f &&
-                    (if (lateral) it.r >= main.r * 0.40f else it.r >= main.r * 0.75f)
+                it.r >= 0.075f && it.r <= main.r * 0.95f &&
+                    (if (lateral) it.r >= main.r * 0.26f else it.r >= main.r * 0.75f)
             }
             val face = fit(donor, n, 1f)
             val feats = face.featuresOnly(face.skinColor())
@@ -123,6 +123,8 @@ object MixRecipes {
             // ghost's eyes): wipe it so the new face isn't drawn on top
             // of the old one.
             out.wipeDarkDetails(cx * n, cy * n, dia * n * 0.62f)
+            // The head's own face goes too, wherever the new face lands.
+            head?.let { out.wipeDarkDetails(it.cx * n, it.cy * n, it.r * n * 1.15f) }
             out.drawTransformed(feats, cx * n, cy * n, dia * n, jitter(rnd, 0.05f))
             out
         }
