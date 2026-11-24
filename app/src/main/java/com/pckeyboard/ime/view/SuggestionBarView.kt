@@ -132,8 +132,6 @@ class SuggestionBarView(
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
 
     companion object {
-        /** Bar height in dp — added to the IME view height while mounted. */
-        const val BAR_DP = 42f
         /** How many candidates the strip requests from the engine. */
         const val MAX_SUGGESTIONS = 8
     }

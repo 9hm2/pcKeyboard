@@ -76,10 +76,18 @@ class KeyboardView @JvmOverloads constructor(
     // backspace presses into its query while it's mounted.
     private var emojiSearchHeader: EmojiSearchHeaderView? = null
 
-    // Autocorrect suggestion strip — when present, sits inside
-    // mainContainer directly above the keyboard rows. Mounted only for
-    // editors where suggestions make sense (the IME service decides).
+    // Autocorrect suggestion strip. It lives INSIDE the keyboard's own
+    // row grid — never as an extra element that grows the view:
+    //  - with a function row: the strip overlays that row (the F-keys
+    //    hide while there are suggestions, and come back after);
+    //  - without one: a dedicated row-height slot is part of the
+    //    keyboard's fixed size (blank when idle), so nothing jumps.
     private var suggestionBar: SuggestionBarView? = null
+    /** The function row the strip overlays (OVER_FNROW mode only). */
+    private var fnRowView: View? = null
+    private var suggestionSlot = SuggestionSlot.NONE
+
+    private enum class SuggestionSlot { NONE, OVER_FNROW, DEDICATED }
 
     // Clipboard manager overlay.
     private var clipboardView: com.pckeyboard.ime.clipboard.ClipboardView? = null
@@ -138,7 +146,9 @@ class KeyboardView @JvmOverloads constructor(
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val mode = MeasureSpec.getMode(heightMeasureSpec)
         if (mode == MeasureSpec.UNSPECIFIED || mode == MeasureSpec.AT_MOST) {
-            val rows = layoutData?.rows?.size ?: 5
+            // The strip's dedicated slot (no F-row to share) is one more
+            // regular row — part of the fixed keyboard size.
+            val rows = (layoutData?.rows?.size ?: 5) + if (needsDedicatedSlot()) 1 else 0
             val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
             val perRowDp = if (widthDp >= 600f) 46f else 52f
             val base = dp(perRowDp) * rows + dp((theme?.keySpacingDp ?: 3).toFloat()) * (rows + 1)
@@ -150,8 +160,7 @@ class KeyboardView @JvmOverloads constructor(
             //  + dp(SEARCH_HEADER_DP) when the emoji search bar is up,
             //    so the keyboard rows keep their normal size.
             val extra = dp(POPUP_ZONE_DP) +
-                (if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0) +
-                (if (suggestionBar != null) dp(SuggestionBarView.BAR_DP) else 0)
+                (if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0)
             val targetHeight = (base * prefs.heightScale).toInt() + extra
             val resolved = if (mode == MeasureSpec.AT_MOST) {
                 minOf(MeasureSpec.getSize(heightMeasureSpec), targetHeight)
@@ -208,7 +217,33 @@ class KeyboardView @JvmOverloads constructor(
         val splitGap = if (prefs.splitEnabled && widthDp >= KeyboardPrefs.SPLIT_MIN_WIDTH_DP)
             prefs.splitGapWeight else 0f
 
-        for (row in layout.rows) {
+        // Suggestion strip placement (see the field comment).
+        suggestionBar = null
+        fnRowView = null
+        suggestionSlot = SuggestionSlot.NONE
+        if (suggestionBarEnabled && !prefs.sideSplitEnabled) {
+            val bar = SuggestionBarView(context, theme) { chip ->
+                listener?.onSuggestionPicked(chip)
+            }
+            suggestionBar = bar
+            if (hasFunctionRow(layout)) {
+                suggestionSlot = SuggestionSlot.OVER_FNROW
+                bar.visibility = GONE
+            } else {
+                suggestionSlot = SuggestionSlot.DEDICATED
+                rowsContainer.addView(FrameLayout(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+                    )
+                    addView(bar, FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    ))
+                })
+            }
+        }
+
+        for ((rowIndex, row) in layout.rows.withIndex()) {
             val rowView = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
@@ -249,8 +284,41 @@ class KeyboardView @JvmOverloads constructor(
                     rowView.addView(spacer)
                 }
             }
-            rowsContainer.addView(rowView)
+            val bar = suggestionBar
+            if (suggestionSlot == SuggestionSlot.OVER_FNROW && rowIndex == 0 && bar != null) {
+                // Strip and F-row share this slot; setSuggestions toggles
+                // which one is visible.
+                fnRowView = rowView
+                rowsContainer.addView(FrameLayout(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+                    )
+                    addView(rowView, FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    ))
+                    addView(bar, FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    ))
+                })
+            } else {
+                rowsContainer.addView(rowView)
+            }
         }
+        // A rebuild (language switch, theme...) must not blank a strip
+        // that currently has content.
+        applySuggestionChips(lastChips)
+    }
+
+    private fun hasFunctionRow(layout: KeyboardLayout): Boolean =
+        layout.rows.firstOrNull()?.any { it.label.matches(Regex("F\\d{1,2}")) } == true
+
+    /** True when the strip needs its own row because the layout has no
+     *  function row to share. */
+    private fun needsDedicatedSlot(): Boolean {
+        val layout = layoutData ?: return false
+        return suggestionBarEnabled && !prefs.sideSplitEnabled && !hasFunctionRow(layout)
     }
 
     /**
@@ -702,77 +770,64 @@ class KeyboardView @JvmOverloads constructor(
         requestLayout()
     }
 
-    // --- Autocorrect suggestion bar ---------------------------------------
+    // --- Autocorrect suggestion strip -------------------------------------
 
-    /** Whether this editor is allowed to have a suggestion strip at all
-     *  (the IME service's per-editor verdict: text fields yes;
-     *  passwords, terminals, URL bars no). The strip itself only mounts
-     *  while there is actual content to show. */
+    /** Whether this editor gets a suggestion strip at all (the IME
+     *  service's per-editor verdict: text fields yes; passwords,
+     *  terminals, URL bars no). Flipping it re-lays-out the keyboard
+     *  once, at input-session start — never while typing. */
     private var suggestionBarEnabled = false
-
-    /** Pending delayed collapse of an empty strip. */
+    private var lastChips: List<SuggestionChip> = emptyList()
     private var suggestionBarUnmountRunnable: Runnable? = null
 
-    /** Sets the per-editor gate. Called on every input session start. */
     fun setSuggestionBarVisible(visible: Boolean) {
+        if (suggestionBarEnabled == visible) return
         suggestionBarEnabled = visible
-        if (!visible) unmountSuggestionBar()
+        lastChips = emptyList()
+        rebuild()
+        requestLayout()
     }
 
     /**
-     * Updates the strip content. The strip mounts on the first
-     * non-empty list; an empty list only BLANKS it (nothing stale left
-     * tappable) and schedules the actual collapse after a short lull —
-     * word boundaries and thinking pauses constantly produce brief
-     * empty moments, and unmounting on each one made the whole
-     * keyboard bounce up and down while typing. Idle long enough, and
-     * the strip folds away, returning the space to the app.
+     * Updates the strip. With candidates it shows them (overlaying the
+     * function row if there is one). With none it just blanks the strip
+     * and — in function-row mode — hands the slot back to the F-keys
+     * after a short lull, so word boundaries don't flicker between the
+     * two. The keyboard's size never changes either way.
      */
-    fun setSuggestions(words: List<SuggestionChip>) {
-        if (!suggestionBarEnabled) {
-            unmountSuggestionBar()
-            return
-        }
-        if (words.isEmpty()) {
-            suggestionBar?.setSuggestions(emptyList())
-            if (suggestionBar != null && suggestionBarUnmountRunnable == null) {
-                val r = Runnable {
-                    suggestionBarUnmountRunnable = null
-                    unmountSuggestionBar()
-                }
-                suggestionBarUnmountRunnable = r
-                handler.postDelayed(r, SUGGESTION_BAR_LINGER_MS)
+    fun setSuggestions(chips: List<SuggestionChip>) {
+        lastChips = chips
+        applySuggestionChips(chips)
+    }
+
+    private fun applySuggestionChips(chips: List<SuggestionChip>) {
+        val bar = suggestionBar ?: return
+        if (chips.isNotEmpty()) {
+            cancelSuggestionBarUnmount()
+            bar.setSuggestions(chips)
+            if (suggestionSlot == SuggestionSlot.OVER_FNROW) {
+                bar.visibility = VISIBLE
+                fnRowView?.visibility = INVISIBLE
             }
             return
         }
-        cancelSuggestionBarUnmount()
-        if (suggestionBar == null) {
-            val theme = theme ?: return
-            val bar = SuggestionBarView(context, theme) { chip ->
-                listener?.onSuggestionPicked(chip)
+        bar.setSuggestions(emptyList())
+        if (suggestionSlot == SuggestionSlot.OVER_FNROW &&
+            bar.visibility == VISIBLE && suggestionBarUnmountRunnable == null
+        ) {
+            val r = Runnable {
+                suggestionBarUnmountRunnable = null
+                suggestionBar?.visibility = GONE
+                fnRowView?.visibility = VISIBLE
             }
-            suggestionBar = bar
-            // Directly above the keyboard rows, below popupZone (and
-            // below the emoji search header if one is up).
-            mainContainer.addView(bar, mainContainer.indexOfChild(rowsContainer),
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(SuggestionBarView.BAR_DP)
-                ))
-            requestLayout()
+            suggestionBarUnmountRunnable = r
+            handler.postDelayed(r, SUGGESTION_BAR_LINGER_MS)
         }
-        suggestionBar?.setSuggestions(words)
     }
 
     private fun cancelSuggestionBarUnmount() {
         suggestionBarUnmountRunnable?.let { handler.removeCallbacks(it) }
         suggestionBarUnmountRunnable = null
-    }
-
-    private fun unmountSuggestionBar() {
-        cancelSuggestionBarUnmount()
-        suggestionBar?.let { mainContainer.removeView(it) }
-        if (suggestionBar != null) requestLayout()
-        suggestionBar = null
     }
 
     // --- Clipboard manager -----------------------------------------------
@@ -1094,13 +1149,16 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun forEachKeyView(action: (KeyView) -> Unit) {
-        for (i in 0 until rowsContainer.childCount) {
-            val row = rowsContainer.getChildAt(i) as? ViewGroup ?: continue
-            for (j in 0 until row.childCount) {
-                val kv = row.getChildAt(j) as? KeyView ?: continue
-                action(kv)
+        fun walk(group: ViewGroup) {
+            for (i in 0 until group.childCount) {
+                when (val child = group.getChildAt(i)) {
+                    is KeyView -> action(child)
+                    is SuggestionBarView -> {}
+                    is ViewGroup -> walk(child)   // rows, and F-row slot wrappers
+                }
             }
         }
+        walk(rowsContainer)
     }
 
     private fun dp(v: Float): Int =
