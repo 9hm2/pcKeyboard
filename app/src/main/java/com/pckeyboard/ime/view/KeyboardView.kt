@@ -728,7 +728,7 @@ class KeyboardView @JvmOverloads constructor(
      * keyboard bounce up and down while typing. Idle long enough, and
      * the strip folds away, returning the space to the app.
      */
-    fun setSuggestions(words: List<String>) {
+    fun setSuggestions(words: List<SuggestionChip>) {
         if (!suggestionBarEnabled) {
             unmountSuggestionBar()
             return
@@ -748,8 +748,8 @@ class KeyboardView @JvmOverloads constructor(
         cancelSuggestionBarUnmount()
         if (suggestionBar == null) {
             val theme = theme ?: return
-            val bar = SuggestionBarView(context, theme) { word ->
-                listener?.onSuggestionPicked(word)
+            val bar = SuggestionBarView(context, theme) { chip ->
+                listener?.onSuggestionPicked(chip)
             }
             suggestionBar = bar
             // Directly above the keyboard rows, below popupZone (and
@@ -1115,7 +1115,7 @@ class KeyboardView @JvmOverloads constructor(
         /** Commit a literal string (used for multi-codepoint emoji + clip taps). */
         fun onText(text: String)
         /** A word was tapped on the suggestion bar. */
-        fun onSuggestionPicked(word: String)
+        fun onSuggestionPicked(chip: SuggestionChip)
         /** Open the clipboard editor activity for the given existing entry. */
         fun onClipboardEdit(text: String)
         /** Open this app's system "App info" page so the user can grant

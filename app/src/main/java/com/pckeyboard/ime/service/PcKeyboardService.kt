@@ -40,7 +40,9 @@ import com.pckeyboard.ime.theme.TerminalThemeBridge
 import com.pckeyboard.ime.theme.ThemeRepository
 import com.pckeyboard.ime.updater.UpdateScheduler
 import com.pckeyboard.ime.view.KeyboardView
+import com.pckeyboard.ime.view.ChipKind
 import com.pckeyboard.ime.view.MenuAction
+import com.pckeyboard.ime.view.SuggestionChip
 import com.pckeyboard.ime.view.VoiceRecognitionController
 
 /** Compact UI label for a language pack id ("en_US" → "EN"). Shared with
@@ -695,31 +697,60 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (word.isEmpty()) {
             // Right after an auto-correction the original leads the
             // strip — one tap takes it back (the Samsung affordance).
-            val revert = pendingRevert
-            val predictions = predictNext(dict, prevWord, prev2Word)
-            keyboardView?.setSuggestions(
-                withUndoChip(
-                    if (revert != null) (listOf(revert.first) + predictions).distinct()
-                    else predictions
-                )
-            )
+            val chips = ArrayList<SuggestionChip>()
+            pendingRevert?.let {
+                chips.add(SuggestionChip(it.first, ChipKind.REVERT, "\u21A9 ${it.first}"))
+            }
+            for (w in predictNext(dict, prevWord, prev2Word)) {
+                if (chips.none { c -> c.text.equals(w, ignoreCase = true) }) {
+                    chips.add(SuggestionChip(w))
+                }
+            }
+            keyboardView?.setSuggestions(withUndoChip(chips))
             return
         }
-        keyboardView?.setSuggestions(
-            withUndoChip(
-                newEngine(dict)
-                    .suggest(
-                        word, com.pckeyboard.ime.view.SuggestionBarView.MAX_SUGGESTIONS,
-                        prevWord, prev2Word
-                    )
-                    .suggestions
-            )
+        val result = newEngine(dict).suggest(
+            word, com.pckeyboard.ime.view.SuggestionBarView.MAX_SUGGESTIONS,
+            prevWord, prev2Word
         )
+        keyboardView?.setSuggestions(withUndoChip(buildWordChips(word, result)))
     }
 
-    private fun withUndoChip(words: List<String>): List<String> =
-        if (proofreadUndo != null) listOf(getString(R.string.proofread_undo_chip)) + words
-        else words
+    /**
+     * Chips for a word in progress, following the Gboard strip anatomy:
+     *  - the word exactly as typed leads (tap = keep it and teach it —
+     *    the escape hatch from any wrong correction);
+     *  - the candidates follow; only the one the next Space will really
+     *    auto-commit is highlighted as the accent pill. Plain
+     *    suggestions stay plain, so the highlight is a promise, not
+     *    decoration.
+     * The pill reflects the per-keystroke (non-deep) verdict; a deeper
+     * boundary-time pass can occasionally find a fix this doesn't.
+     */
+    private fun buildWordChips(
+        typed: String,
+        result: SuggestionEngine.Result
+    ): List<SuggestionChip> {
+        val chips = ArrayList<SuggestionChip>()
+        val autoTarget =
+            if (kbPrefs.autocorrectMode == KeyboardPrefs.AUTOCORRECT_AUTO &&
+                typed.lowercase() !in autocorrectVetoes
+            ) result.autoReplace else null
+        val showVerbatim = typed.length >= 2 &&
+            result.suggestions.none { it.equals(typed, ignoreCase = true) }
+        if (showVerbatim) chips.add(SuggestionChip(typed, ChipKind.VERBATIM))
+        for (s in result.suggestions) {
+            val isAuto = autoTarget != null && s.equals(autoTarget, ignoreCase = true)
+            chips.add(SuggestionChip(s, if (isAuto) ChipKind.AUTO else ChipKind.NORMAL))
+        }
+        return chips
+    }
+
+    private fun withUndoChip(chips: List<SuggestionChip>): List<SuggestionChip> =
+        if (proofreadUndo != null) {
+            val label = getString(R.string.proofread_undo_chip)
+            listOf(SuggestionChip(label, ChipKind.UNDO_PROOFREAD)) + chips
+        } else chips
 
     private fun toast(resId: Int, vararg args: Any) {
         android.widget.Toast.makeText(this, getString(resId, *args), android.widget.Toast.LENGTH_SHORT)
@@ -1279,16 +1310,17 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     /** Suggestion-bar tap: replace the word being typed with the picked
      *  candidate and move on with a trailing space. Every tap is also a
      *  labelled example "typed -> meant" for the personal typo model. */
-    override fun onSuggestionPicked(word: String) {
+    override fun onSuggestionPicked(chip: SuggestionChip) {
         val ic = currentInputConnection ?: return
-        if (proofreadUndo != null && word == getString(R.string.proofread_undo_chip)) {
+        val word = chip.text
+        if (chip.kind == ChipKind.UNDO_PROOFREAD) {
             undoProofread()
             return
         }
         // Revert chip: restore what the user actually typed, veto and
         // learn it — same semantics as the retype-to-keep flow.
         val revert = pendingRevert
-        if (revert != null && word.equals(revert.first, ignoreCase = true)) {
+        if (chip.kind == ChipKind.REVERT && revert != null) {
             pendingRevert = null
             pendingInsist = null
             val expect = revert.second + revert.third
@@ -1304,6 +1336,15 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                 keyboardView?.setSuggestions(emptyList())
                 return
             }
+        }
+        // Verbatim chip: "keep exactly what I typed". Commit the word as
+        // is, and teach it everywhere so it's never "fixed" again.
+        val verbatim = chip.kind == ChipKind.VERBATIM
+        if (verbatim) {
+            val lower = word.lowercase()
+            autocorrectVetoes.add(lower)
+            userDict().forceLearn(lower)
+            personalModel().forget(lower)
         }
         pendingRevert = null
         pendingInsist = null
@@ -1326,7 +1367,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         ic.commitText(insert, 1)
         ic.endBatchEdit()
         val replaced = current + after.substring(0, suffixLen)
-        if (replaced.isNotEmpty() && !replaced.equals(word, ignoreCase = true)) {
+        if (!verbatim && replaced.isNotEmpty() &&
+            !replaced.equals(word, ignoreCase = true)
+        ) {
             personalModel().recordCorrection(replaced, word)
         }
         keyboardView?.setSuggestions(emptyList())

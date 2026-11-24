@@ -11,6 +11,27 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.pckeyboard.ime.theme.KeyboardTheme
 
+/** What a strip chip means — drives both its look and what a tap does. */
+enum class ChipKind {
+    /** An ordinary candidate. */
+    NORMAL,
+    /** The candidate the next Space will auto-commit (accent pill). */
+    AUTO,
+    /** The word exactly as typed — tapping keeps it and teaches it. */
+    VERBATIM,
+    /** Takes back the last auto-correction (carries the original word). */
+    REVERT,
+    /** Takes back the last Proofread. */
+    UNDO_PROOFREAD
+}
+
+/** [text] is what a tap acts on; [label] is what's drawn (defaults to it). */
+data class SuggestionChip(
+    val text: String,
+    val kind: ChipKind = ChipKind.NORMAL,
+    val label: String = text
+)
+
 /**
  * Suggestion strip pinned between the popup zone and the keyboard rows.
  * Horizontally scrollable: the best candidate sits leftmost (rendered
@@ -21,7 +42,7 @@ import com.pckeyboard.ime.theme.KeyboardTheme
 class SuggestionBarView(
     context: Context,
     private val theme: KeyboardTheme,
-    private val onPick: (String) -> Unit
+    private val onPick: (SuggestionChip) -> Unit
 ) : HorizontalScrollView(context) {
 
     private val row = LinearLayout(context).apply {
@@ -35,18 +56,23 @@ class SuggestionBarView(
         addView(row, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
     }
 
-    fun setSuggestions(words: List<String>) {
+    fun setSuggestions(chips: List<SuggestionChip>) {
         row.removeAllViews()
-        for ((i, word) in words.withIndex()) {
+        for ((i, chip) in chips.withIndex()) {
             if (i > 0) row.addView(makeDivider())
-            row.addView(makeChip(word, best = i == 0))
+            row.addView(makeChip(chip))
         }
         scrollTo(0, 0)
     }
 
-    private fun makeChip(word: String, best: Boolean): TextView =
-        TextView(context).apply {
-            text = word
+    private fun makeChip(chip: SuggestionChip): TextView {
+        val best = chip.kind == ChipKind.AUTO
+        return TextView(context).apply {
+            text = when (chip.kind) {
+                // Quotes mark "this exactly as typed".
+                ChipKind.VERBATIM -> "\u201C${chip.label}\u201D"
+                else -> chip.label
+            }
             gravity = Gravity.CENTER
             maxLines = 1
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
@@ -64,8 +90,19 @@ class SuggestionBarView(
                     cornerRadius = dp(10f).toFloat()
                 }
             } else {
-                setTextColor(theme.keyTextColor)
-                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                val special = chip.kind == ChipKind.REVERT ||
+                    chip.kind == ChipKind.UNDO_PROOFREAD
+                setTextColor(
+                    when {
+                        chip.kind == ChipKind.VERBATIM -> theme.secondaryTextColor
+                        special -> theme.accentColor
+                        else -> theme.keyTextColor
+                    }
+                )
+                typeface = Typeface.create(
+                    "sans-serif",
+                    if (chip.kind == ChipKind.VERBATIM) Typeface.ITALIC else Typeface.NORMAL
+                )
             }
             minimumWidth = dp(88f)
             setPadding(dp(16f), 0, dp(16f), 0)
@@ -80,9 +117,10 @@ class SuggestionBarView(
             isClickable = true
             setOnClickListener {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                onPick(word)
+                onPick(chip)
             }
         }
+    }
 
     private fun makeDivider(): View = View(context).apply {
         setBackgroundColor(theme.modifierKeyColor)
