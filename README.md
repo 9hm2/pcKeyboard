@@ -447,7 +447,9 @@ service/      PcKeyboardService — InputMethodService entry-point. Converts
 
 GPL v3 — see [LICENSE](LICENSE).
 
-The word-frequency dictionaries in `app/src/main/assets/dict/` are
+The Hungarian word-frequency dictionary is a mixed-register list
+(subtitles + news + Wikipedia, `scripts/build_merged_dictionary.py`);
+the other languages' dictionaries in `app/src/main/assets/dict/` are
 derived from the OpenSubtitles-2018 frequency lists published in
 [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords)
 (CC-BY-SA 4.0); see `scripts/generate_dictionaries.py` for how they're

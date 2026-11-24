@@ -13,16 +13,18 @@ Usage:
 """
 
 import gzip
+import os
 import re
 import sys
 from collections import Counter
 from pathlib import Path
 
 LANGS = {
-    "hu_HU": ("hun_news_2020_1M-sentences.txt", re.compile(r"[a-záéíóöőúüű]+")),
-    "en_US": ("eng_news_2020_1M-sentences.txt", re.compile(r"[a-z]+(?:'[a-z]+)?")),
-    "de_DE": ("deu_news_2020_1M-sentences.txt", re.compile(r"[a-zäöüß]+")),
-    "es_ES": ("spa_news_2020_1M-sentences.txt", re.compile(r"[a-záéíóúüñ]+")),
+    "hu_HU": (["hun_news_2020_1M-sentences.txt", "hun_wikipedia_2016_1M-sentences.txt"],
+              re.compile(r"[a-záéíóöőúüű]+")),
+    "en_US": (["eng_news_2020_1M-sentences.txt"], re.compile(r"[a-z]+(?:'[a-z]+)?")),
+    "de_DE": (["deu_news_2020_1M-sentences.txt"], re.compile(r"[a-zäöüß]+")),
+    "es_ES": (["spa_news_2020_1M-sentences.txt"], re.compile(r"[a-záéíóúüñ]+")),
 }
 
 MIN_COUNT = 3
@@ -37,9 +39,10 @@ def load_vocab(dict_dir, lang_id):
         return {w: i for i, w in enumerate(f.read().split("\n"))}
 
 
-def generate(lang_id, sentences_path, pattern, vocab, out_dir):
+def generate(lang_id, sentences_paths, pattern, vocab, out_dir):
     counts = Counter()
-    with open(sentences_path, encoding="utf-8", errors="replace") as f:
+    for sentences_path in sentences_paths:
+      with open(sentences_path, encoding="utf-8", errors="replace") as f:
         for line in f:
             tab = line.find("\t")
             sentence = line[tab + 1:] if tab >= 0 else line
@@ -72,9 +75,12 @@ def main():
     assets = Path(__file__).resolve().parent.parent / "app/src/main/assets/dict"
     out_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else assets
     out_dir.mkdir(parents=True, exist_ok=True)
-    for lang_id, (fname, pattern) in LANGS.items():
+    only = os.environ.get("PCK_LANGS")  # e.g. PCK_LANGS=hu_HU
+    for lang_id, (fnames, pattern) in LANGS.items():
+        if only and lang_id not in only.split(","):
+            continue
         vocab = load_vocab(assets, lang_id)
-        generate(lang_id, src_dir / fname, pattern, vocab, out_dir)
+        generate(lang_id, [src_dir / f for f in fnames], pattern, vocab, out_dir)
 
 
 if __name__ == "__main__":

@@ -98,7 +98,10 @@ class SuggestionEngine(
         // spellings ("hpgy", "talalkozunk"), and treating those as valid
         // words was blocking exactly the corrections users want most.
         val typedValidWord = validator?.let { v ->
-            v(typed) || (typed != lower && v(lower))
+            v(typed) || (typed != lower && v(lower)) ||
+                // A name typed in lowercase ("pécs", "orbán"): Hunspell
+                // only knows the capitalised form. Never "fix" those.
+                v(lower.replaceFirstChar { it.uppercase() })
         } == true
         val typedTrusted = typedValidWord ||
             (typedRank in 0 until WEAK_TYPED_RANK) ||
@@ -138,6 +141,21 @@ class SuggestionEngine(
             offer(skeletonWord, if (skeletonRank >= 0) skeletonRank / ACCENT_BOOST else 0)
         }
 
+        // Hunspell's Hungarian compounding is permissive: it validates
+        // non-words like "gegnap" or "leenne". When the typed word is
+        // Hunspell-valid but absent from the frequency list (real words
+        // that common are listed), still OFFER very common near-misses —
+        // as suggestions only: typedTrusted stays true, so nothing is
+        // ever auto-replaced on this doubt alone.
+        if (typedValidWord && typedRank < 0 && user?.isKnown(lower) != true &&
+            lower.length >= DOUBT_MIN_LENGTH
+        ) {
+            for ((word, score) in editDistance1Hits(lower)) {
+                val r = dict.rankOf(word)
+                if (r in 0 until DOUBT_MAX_RANK) offer(word, score * DOUBT_PENALTY)
+            }
+        }
+
         if (!typedTrusted && lower.length >= MIN_EDIT1_LENGTH) {
             val edit1 = editDistance1Hits(lower)
             for ((word, score) in edit1) {
@@ -157,7 +175,11 @@ class SuggestionEngine(
             }
         }
 
-        val completions = dict.topCompletions(lower, maxSuggestions)
+        // Pull a WIDE pool of completions: the corpus-frequency top-8 is
+        // a poor proxy for "what comes next", and the context models
+        // (bigram/trigram/personal) can only promote candidates that are
+        // in the pool in the first place.
+        val completions = dict.topCompletions(lower, maxOf(maxSuggestions, COMPLETION_POOL))
         for (completion in completions) {
             offer(completion, dict.rankOf(completion) * COMPLETION_PENALTY)
         }
@@ -556,6 +578,12 @@ class SuggestionEngine(
         /** Completions are the least certain source: their rank is
          *  multiplied by this. */
         private const val COMPLETION_PENALTY = 2
+        /** How many completions enter scoring before context re-ranks. */
+        private const val COMPLETION_POOL = 40
+        /** "Doubt the validator" tuning (see suggest()). */
+        private const val DOUBT_MIN_LENGTH = 4
+        private const val DOUBT_MAX_RANK = 8_000
+        private const val DOUBT_PENALTY = 3
         /** Typo-tolerant completions are more uncertain still. */
         private const val FUZZY_COMPLETION_PENALTY = 4
         /** Reaching a word through an edit AND the accent map is a
