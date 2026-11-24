@@ -100,4 +100,8 @@
     <string name="proofread_too_long">Text too long — select a part to proofread</string>
     <string name="proofread_unavailable">Proofreading isn\'t available in this field</string>
     <string name="proofread_undo_chip">↩ Undo proofread</string>
+
+    <string name="mix_hint">Pick two emojis to mix</string>
+    <string name="mix_copied">Mix copied — paste it into the message</string>
+    <string name="mix_failed">Couldn\'t send the mix</string>
 </resources>

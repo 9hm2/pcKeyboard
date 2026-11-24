@@ -32,7 +32,9 @@ import com.pckeyboard.ime.theme.KeyboardTheme
 class EmojiView(
     context: Context,
     private val theme: KeyboardTheme,
-    private val tracker: EmojiUsageTracker
+    private val tracker: EmojiUsageTracker,
+    /** Shows the ✨ Mix button (off when this view is the grid inside the mixer). */
+    private val showMixButton: Boolean = true
 ) : FrameLayout(context) {
 
     interface Listener {
@@ -40,6 +42,8 @@ class EmojiView(
         fun onBack()
         fun onBackspace()
         fun onSearch()
+        /** The ✨ Mix button was tapped. */
+        fun onMix() {}
     }
 
 
@@ -137,7 +141,10 @@ class EmojiView(
         val controlRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.modifierKeyColor)
-            setPadding(0, dp(6f), dp(8f), dp(6f))
+            setPadding(dp(8f), dp(6f), dp(8f), dp(6f))
+        }
+        if (showMixButton) {
+            controlRow.addView(outlinedControlButton("✨ Mix") { listener?.onMix() })
         }
         controlRow.addView(spacerView(1.0f))
         controlRow.addView(outlinedControlButton("ABC") { listener?.onBack() })

@@ -178,6 +178,11 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return@OnPrimaryClipChangedListener
         val clip = cm.primaryClip ?: return@OnPrimaryClipChangedListener
         if (clip.itemCount == 0) return@OnPrimaryClipChangedListener
+        // Only text belongs in the clipboard history (our own emoji-mix
+        // stickers land here as content:// URIs).
+        if (!clip.description.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_PLAIN) &&
+            !clip.description.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_HTML)
+        ) return@OnPrimaryClipChangedListener
         val text = clip.getItemAt(0)?.coerceToText(this)?.toString() ?: return@OnPrimaryClipChangedListener
         if (text.isNotBlank()) {
             ClipboardHistory(this).add(text)
@@ -1276,6 +1281,48 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onVoiceClosed() = endVoiceSession()
+
+    /**
+     * Sends an emoji-mix sticker: inserted as an image when the focused
+     * editor accepts image/png via commitContent (chat apps do), else
+     * placed on the clipboard so the user can paste it.
+     */
+    override fun onEmojiMixPicked(file: java.io.File) {
+        val uri = try {
+            androidx.core.content.FileProvider.getUriForFile(
+                this, "$packageName.fileprovider", file
+            )
+        } catch (_: Throwable) { toast(R.string.mix_failed); return }
+        val ic = currentInputConnection
+        val info = currentInputEditorInfo
+        var sent = false
+        if (ic != null && info != null) {
+            val accepted = androidx.core.view.inputmethod.EditorInfoCompat
+                .getContentMimeTypes(info)
+                .any { android.content.ClipDescription.compareMimeTypes("image/png", it) }
+            if (accepted) {
+                val content = androidx.core.view.inputmethod.InputContentInfoCompat(
+                    uri,
+                    android.content.ClipDescription("Emoji mix", arrayOf("image/png")),
+                    null
+                )
+                sent = androidx.core.view.inputmethod.InputConnectionCompat.commitContent(
+                    ic, info, content,
+                    androidx.core.view.inputmethod.InputConnectionCompat
+                        .INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+                    null
+                )
+            }
+        }
+        if (!sent) {
+            try {
+                (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)?.setPrimaryClip(
+                    android.content.ClipData.newUri(contentResolver, "Emoji mix", uri)
+                )
+                toast(R.string.mix_copied)
+            } catch (_: Throwable) { toast(R.string.mix_failed) }
+        }
+    }
 
     override fun onOpenAppSettings() {
         // Deep-link straight to this app's "App info" page so the user

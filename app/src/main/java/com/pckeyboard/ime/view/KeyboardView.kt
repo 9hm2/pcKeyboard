@@ -68,6 +68,9 @@ class KeyboardView @JvmOverloads constructor(
     // Emoji picker overlay shown via the action menu "Emoji" item.
     private var emojiView: EmojiView? = null
 
+    // Emoji mixer overlay (✨ Mix button inside the picker).
+    private var emojiMixPanel: EmojiMixPanel? = null
+
     // Voice input overlay shown via the action menu "Voice input" item.
     private var voiceInputView: VoiceInputView? = null
 
@@ -675,6 +678,7 @@ class KeyboardView @JvmOverloads constructor(
                 override fun onSearch() {
                     showEmojiSearchHeader()
                 }
+                override fun onMix() = showEmojiMix()
             }
         }
         emojiView = view
@@ -689,10 +693,28 @@ class KeyboardView @JvmOverloads constructor(
     fun hideEmojiPicker() {
         emojiView?.let { removeView(it) }
         emojiView = null
+        emojiMixPanel?.let { removeView(it) }
+        emojiMixPanel = null
         rowsContainer.visibility = VISIBLE
     }
 
-    fun isEmojiOpen(): Boolean = emojiView != null
+    fun isEmojiOpen(): Boolean = emojiView != null || emojiMixPanel != null
+
+    /** Swaps the picker for the emoji mixer (same keys-area overlay). */
+    fun showEmojiMix() {
+        val theme = theme ?: return
+        hideEmojiPicker()
+        val panel = EmojiMixPanel(
+            context, theme, emojiTracker, context.cacheDir,
+            onSend = { file -> this@KeyboardView.listener?.onEmojiMixPicked(file) },
+            onClose = { hideEmojiPicker() }
+        )
+        emojiMixPanel = panel
+        rowsContainer.visibility = INVISIBLE
+        addView(panel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
+            topMargin = dp(POPUP_ZONE_DP)
+        })
+    }
 
     // --- Voice input overlay --------------------------------------------
 
@@ -1182,5 +1204,7 @@ class KeyboardView @JvmOverloads constructor(
         fun onOpenAppSettings()
         /** The user closed the voice overlay (✕) — end the session. */
         fun onVoiceClosed()
+        /** A finished emoji-mix sticker (PNG in the app cache) to insert. */
+        fun onEmojiMixPicked(file: java.io.File)
     }
 }
