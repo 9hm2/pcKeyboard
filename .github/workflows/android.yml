@@ -35,8 +35,18 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub's ubuntu runners ship with the Android SDK preinstalled
+      # (ANDROID_HOME is already set). android-actions/setup-android
+      # re-ran sdkmanager on top of that and failed the whole build on
+      # transient download errors, so just accept the licenses (best
+      # effort — AGP auto-installs any missing platform/build-tools).
+      - name: Accept Android SDK licenses
+        run: |
+          SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          fi
+          ls "$ANDROID_HOME/platforms" || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
